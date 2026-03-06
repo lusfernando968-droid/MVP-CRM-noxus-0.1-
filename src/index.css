@@ -1,0 +1,307 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 220 40% 13%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 40% 13%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 40% 13%;
+
+    --primary: 224 82% 56%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 220 40% 13%;
+
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+
+    --accent: 210 100% 96%;
+    --accent-foreground: 220 40% 13%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 224 82% 56%;
+
+    --radius: 0.75rem;
+
+    /* Custom tokens */
+    --sidebar-bg: 220 40% 13%;
+    --sidebar-fg: 210 40% 98%;
+    --sidebar-muted: 220 30% 22%;
+    --sidebar-accent: 224 82% 56%;
+    --sidebar-hover: 220 35% 18%;
+
+    --surface: 210 20% 98%;
+    --surface-foreground: 220 40% 13%;
+
+    --pastel-blue: 210 100% 96%;
+    --pastel-blue-foreground: 217 60% 35%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --info: 224 82% 56%;
+    --info-foreground: 0 0% 100%;
+
+    --sidebar-background: 220 40% 13%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 224 82% 56%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 35% 18%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 220 30% 22%;
+    --sidebar-ring: 224 82% 56%;
+  }
+
+  .dark {
+    --background: 220 40% 6%;
+    --foreground: 210 40% 98%;
+    --card: 220 40% 8%;
+    --card-foreground: 210 40% 98%;
+    --popover: 220 40% 8%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 224 82% 56%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 30% 15%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 220 30% 15%;
+    --muted-foreground: 220 9% 60%;
+    --accent: 220 30% 15%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 220 30% 18%;
+    --input: 220 30% 18%;
+    --ring: 224 82% 56%;
+    --sidebar-background: 220 40% 6%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 224 82% 56%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 30% 12%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 220 30% 15%;
+    --sidebar-ring: 224 82% 56%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', sans-serif;
+  }
+}
+
+@layer utilities {
+  .animate-marquee {
+    animation: marquee 40s linear infinite;
+  }
+
+  .animate-marquee-slow {
+    animation: marquee 50s linear infinite;
+  }
+
+  .animate-marquee-reverse {
+    animation: marquee-reverse 40s linear infinite;
+  }
+
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  @keyframes marquee-reverse {
+    from {
+      transform: translateX(-50%);
+    }
+
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  .stat-card {
+    @apply bg-card rounded-xl border p-6 shadow-sm transition-all duration-200 hover:shadow-md;
+  }
+
+  .page-container {
+    @apply p-6 lg:p-8 space-y-6;
+  }
+
+  .page-header {
+    @apply flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4;
+  }
+
+  .page-title {
+    @apply text-2xl font-bold text-foreground tracking-tight;
+  }
+
+  .page-subtitle {
+    @apply text-muted-foreground text-sm;
+  }
+}
+
+/* FullCalendar Custom Styling */
+.fc {
+  --fc-button-bg-color: hsl(var(--secondary));
+  --fc-button-border-color: hsl(var(--border));
+  --fc-button-hover-bg-color: hsl(var(--accent));
+  --fc-button-hover-border-color: hsl(var(--border));
+  --fc-button-active-bg-color: hsl(var(--primary));
+  --fc-button-active-border-color: hsl(var(--primary));
+  --fc-button-text-color: hsl(var(--foreground));
+  --fc-border-color: hsl(var(--border));
+  --fc-event-bg-color: hsl(var(--primary));
+  --fc-event-border-color: hsl(var(--primary));
+  --fc-today-bg-color: transparent !important;
+  --fc-page-bg-color: transparent;
+  font-family: inherit;
+}
+
+.fc .fc-button {
+  @apply rounded-xl font-medium transition-all duration-200 border shadow-sm px-4 py-2 !text-foreground;
+  text-transform: capitalize;
+}
+
+.fc .fc-button-primary:not(:disabled):active,
+.fc .fc-button-primary:not(:disabled).fc-button-active {
+  @apply bg-primary !text-primary-foreground border-primary shadow-inner scale-95;
+}
+
+.fc .fc-button-primary:hover {
+  @apply bg-accent text-accent-foreground;
+}
+
+.fc .fc-toolbar-title {
+  @apply text-xl font-bold tracking-tight text-foreground;
+}
+
+.fc .fc-header-toolbar {
+  @apply mb-8 gap-4 flex-wrap;
+}
+
+.fc .fc-button-group {
+  @apply gap-1;
+}
+
+.fc .fc-button-group>.fc-button {
+  @apply rounded-xl;
+  /* Break the default group square corners */
+}
+
+/* Event Styling */
+.fc-v-event,
+.fc-h-event {
+  @apply border-none shadow-sm overflow-hidden !important;
+}
+
+.fc-daygrid-event {
+  @apply rounded-md px-1.5 py-0.5 !important;
+}
+
+.fc-timegrid-event {
+  @apply rounded-lg !important;
+}
+
+.fc .fc-col-header-cell {
+  @apply py-3 bg-muted/30 font-semibold text-xs uppercase tracking-wider text-muted-foreground border-b;
+}
+
+.fc .fc-timegrid-slot-label {
+  @apply text-[10px] font-medium text-muted-foreground uppercase;
+}
+
+.fc .fc-timegrid-now-indicator-line {
+  @apply border-primary;
+}
+
+.fc .fc-timegrid-now-indicator-arrow {
+  @apply border-primary text-primary;
+}
+
+/* Define a "today" style for ALL views (Month, Week, Day) */
+.fc .fc-day-today,
+.fc td.fc-day-today,
+.fc div.fc-day-today,
+.fc .fc-daygrid-day.fc-day-today,
+.fc .fc-timegrid-col.fc-day-today {
+  background-color: transparent !important;
+  background: transparent !important;
+  box-shadow: inset 0 0 0 2.5px hsl(var(--primary) / 0.5) !important;
+}
+
+/* Visibility Fixes - Force text contrast */
+.fc {
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Day numbers and headers - Dark Blue / Foreground */
+.fc .fc-col-header-cell-cushion,
+.fc .fc-daygrid-day-number,
+.fc .fc-timegrid-slot-label-cushion,
+.fc .fc-list-day-text,
+.fc .fc-timegrid-axis-cushion,
+.fc .fc-timegrid-axis-frame-cushion {
+  color: hsl(var(--foreground)) !important;
+  opacity: 1 !important;
+}
+
+/* Event text - White ONLY for block events with backgrounds */
+.fc-v-event,
+.fc-h-event,
+.fc-daygrid-block-event,
+.fc-timegrid-event,
+.fc-event.bg-primary,
+.fc-event.bg-success,
+.fc-event.bg-warning,
+.fc-event.bg-danger {
+  color: #ffffff !important;
+}
+
+.fc-v-event *,
+.fc-h-event *,
+.fc-daygrid-block-event *,
+.fc-timegrid-event * {
+  color: #ffffff !important;
+}
+
+/* Dot events should follow the foreground color (dark blue/black) */
+.fc-daygrid-dot-event {
+  color: hsl(var(--foreground)) !important;
+}
+
+.fc-daygrid-dot-event:hover {
+  background-color: hsl(var(--accent) / 0.1) !important;
+}
+
+.fc .fc-col-header-cell-cushion {
+  font-weight: 700 !important;
+}
+
+
+.fc-theme-standard .fc-scrollgrid {
+  border-color: hsl(var(--border)) !important;
+}

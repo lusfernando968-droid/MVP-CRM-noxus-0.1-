@@ -1,0 +1,679 @@
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import {
+  Calendar,
+  TrendingUp,
+  Users,
+  DollarSign,
+  Clock,
+  ArrowUpRight,
+  ArrowDownRight,
+  AlertCircle,
+  FileText,
+  Phone
+} from "lucide-react";
+import { Link } from "react-router-dom";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell
+} from 'recharts';
+
+interface DashboardStats {
+  sessionsToday: string;
+  monthlyRevenue: string;
+  activeClients: string;
+  avgTime: string;
+  pendingReceivables: string;
+  anamnesisCompleted: string;
+  topDiscoverySource: string;
+}
+
+const Index = () => {
+  const [statsData, setStatsData] = useState<DashboardStats>({
+    sessionsToday: "0",
+    monthlyRevenue: "R$ 0",
+    activeClients: "0",
+    avgTime: "0h 00m",
+    pendingReceivables: "R$ 0",
+    anamnesisCompleted: "0",
+    topDiscoverySource: "-",
+  });
+  const [todayClients, setTodayClients] = useState<any[]>([]);
+  const [recentPayments, setRecentPayments] = useState<any[]>([]);
+  const [revenueChartData, setRevenueChartData] = useState<any[]>([]);
+  const [appointmentsStatusData, setAppointmentsStatusData] = useState<any[]>([]);
+  const [pendingAnamnesisAlerts, setPendingAnamnesisAlerts] = useState<any[]>([]);
+  const [tomorrowAppointments, setTomorrowAppointments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      const today = new Date().toISOString().split('T')[0];
+      const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+
+      // 1. Fetch Sessions Today
+      const { count: sessionsCount } = await supabase
+        .from('nx_appointments')
+        .select('*', { count: 'exact', head: true })
+        .eq('date', today);
+
+      // 2. Fetch Monthly Revenue
+      const { data: revenueData } = await supabase
+        .from('nx_financial_transactions')
+        .select('value')
+        .eq('type', 'entrada')
+        .gte('date', startOfMonth);
+
+      const totalRevenue = revenueData?.reduce((acc, curr) => acc + Number(curr.value), 0) || 0;
+
+      // 3. Fetch Active Clients
+      const { count: clientsCount } = await supabase
+        .from('nx_clients')
+        .select('*', { count: 'exact', head: true });
+
+      // 4. Fetch Average Time
+      const { data: apptsTime } = await supabase
+        .from('nx_appointments')
+        .select('start_time, end_time');
+
+      let avgMinutes = 0;
+      if (apptsTime && apptsTime.length > 0) {
+        const totalMinutes = apptsTime.reduce((acc, curr) => {
+          const [h1, m1] = curr.start_time.split(':').map(Number);
+          const [h2, m2] = curr.end_time.split(':').map(Number);
+          return acc + ((h2 * 60 + m2) - (h1 * 60 + m1));
+        }, 0);
+        avgMinutes = totalMinutes / apptsTime.length;
+      }
+      const h = Math.floor(avgMinutes / 60);
+      const m = Math.round(avgMinutes % 60);
+
+      // 7. Fetch Pending Receivables
+      const { data: pendingData } = await supabase
+        .from('nx_appointments')
+        .select('value, deposit')
+        .in('status', ['Pendente', 'Agendado']);
+
+      const totalPending = pendingData?.reduce((acc, curr) => acc + (Number(curr.value) - Number(curr.deposit)), 0) || 0;
+
+      // 8. Fetch Anamnesis Stats
+      const { data: anamnesisData } = await supabase
+        .from('nx_anamnesis')
+        .select('discovery_source');
+
+      const anamnesisCount = anamnesisData?.length || 0;
+
+      let topSource = "-";
+      if (anamnesisData && anamnesisData.length > 0) {
+        const sourceCounts = anamnesisData.reduce((acc: Record<string, number>, curr) => {
+          if (curr.discovery_source) {
+            acc[curr.discovery_source] = (acc[curr.discovery_source] || 0) + 1;
+          }
+          return acc;
+        }, {});
+
+        topSource = Object.entries(sourceCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
+      }
+
+      setStatsData({
+        sessionsToday: String(sessionsCount || 0),
+        monthlyRevenue: `R$ ${totalRevenue.toLocaleString('pt-BR')}`,
+        activeClients: String(clientsCount || 0),
+        avgTime: `${h}h ${m.toString().padStart(2, '0')}m`,
+        pendingReceivables: `R$ ${totalPending.toLocaleString('pt-BR')}`,
+        anamnesisCompleted: String(anamnesisCount),
+        topDiscoverySource: topSource
+      });
+
+      // 9. Fetch and format Revenue Chart Data (Last 7 Days)
+      const last7Days = new Date();
+      last7Days.setDate(last7Days.getDate() - 6); // Includes today
+      const startOf7Days = last7Days.toISOString().split('T')[0];
+
+      const { data: chartFinancialData } = await supabase
+        .from('nx_financial_transactions')
+        .select('date, value, type')
+        .gte('date', startOf7Days)
+        .order('date');
+
+      // Group by date
+      const aggregatedData: Record<string, { income: number; expense: number }> = {};
+      const datesList = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(last7Days);
+        d.setDate(last7Days.getDate() + i);
+        const dateStr = d.toISOString().split('T')[0];
+        aggregatedData[dateStr] = { income: 0, expense: 0 };
+        datesList.push(dateStr);
+      }
+
+      chartFinancialData?.forEach(tx => {
+        if (aggregatedData[tx.date] !== undefined) {
+          if (tx.type === 'entrada') {
+            aggregatedData[tx.date].income += Number(tx.value);
+          } else {
+            aggregatedData[tx.date].expense += Number(tx.value);
+          }
+        }
+      });
+
+      const formattedRevenueChart = datesList.map(date => ({
+        date: new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        income: aggregatedData[date].income,
+        expense: aggregatedData[date].expense,
+        profit: aggregatedData[date].income - aggregatedData[date].expense
+      }));
+      setRevenueChartData(formattedRevenueChart);
+
+      // 10. Fetch Appointments Status for Chart (Current Month)
+      const { data: apptStatusData } = await supabase
+        .from('nx_appointments')
+        .select('status')
+        .gte('date', startOfMonth);
+
+      const statusCounts = {
+        Confirmado: 0,
+        Agendado: 0,
+        Cancelado: 0
+      };
+
+      apptStatusData?.forEach(appt => {
+        if (appt.status === 'Confirmado' || appt.status === 'Concluído') statusCounts.Confirmado++;
+        else if (appt.status === 'Pendente' || appt.status === 'Agendado') statusCounts.Agendado++;
+        else if (appt.status === 'Cancelado') statusCounts.Cancelado++;
+      });
+
+      setAppointmentsStatusData([
+        { name: 'Confirmado/Concluído', value: statusCounts.Confirmado, fill: '#9333ea' }, // Purple
+        { name: 'Agendado', value: statusCounts.Agendado, fill: 'hsl(var(--primary))' }, // Blue
+        { name: 'Cancelado', value: statusCounts.Cancelado, fill: 'hsl(var(--destructive))' }, // Red
+      ].filter(d => d.value > 0));
+
+      // 11. Fetch Pending Anamnesis Alerts
+      // Clients who have an appointment in the next 7 days but no filled anamnesis
+      const in7Days = new Date();
+      in7Days.setDate(in7Days.getDate() + 7);
+      const endOf7Days = in7Days.toISOString().split('T')[0];
+
+      const { data: upcomingAppts } = await supabase
+        .from('nx_appointments')
+        .select(`
+          client_id,
+          date,
+          clients (
+            name,
+            phone
+          )
+        `)
+        .gte('date', today)
+        .lte('date', endOf7Days)
+        .order('date');
+
+      if (upcomingAppts && upcomingAppts.length > 0) {
+        const clientIds = [...new Set(upcomingAppts.map(a => a.client_id))].filter(id => id !== null); // Removing duplicates and nulls
+
+        const { data: existingAnamnesisOnes } = await supabase
+          .from('nx_anamnesis')
+          .select('client_id');
+
+        const existingIds = new Set(existingAnamnesisOnes?.map(a => a.client_id) || []);
+
+        const pendingAlerts = upcomingAppts
+          .filter(appt => appt.client_id && !existingIds.has(appt.client_id))
+          .map(appt => ({
+            client_id: appt.client_id,
+            name: (appt.clients as any)?.name,
+            phone: (appt.clients as any)?.phone,
+            date: new Date(appt.date).toLocaleDateString('pt-BR')
+          }));
+
+        // Remove duplicate clients in the alerts (e.g., if booked twice in 7 days)
+        const uniqueAlerts = pendingAlerts.filter((v, i, a) => a.findIndex(v2 => (v2.client_id === v.client_id)) === i);
+        setPendingAnamnesisAlerts(uniqueAlerts);
+      } else {
+        setPendingAnamnesisAlerts([]);
+      }
+
+      // 5. Fetch Today's Clients List
+      const { data: nextClients } = await supabase
+        .from('nx_appointments')
+        .select(`
+          *,
+          clients (
+            name
+          )
+        `)
+        .eq('date', today)
+        .order('start_time');
+
+      setTodayClients(nextClients?.map(appt => ({
+        name: (appt.clients as any)?.name || "Desconhecido",
+        time: appt.start_time.substring(0, 5),
+        type: appt.notes || "Sessão de Tattoo",
+        status: appt.status
+      })) || []);
+
+      // 6. Fetch Recent Payments
+      const { data: payments } = await supabase
+        .from('nx_financial_transactions')
+        .select('*')
+        .eq('type', 'entrada')
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      setRecentPayments(payments?.map(p => ({
+        client: p.description.split(' - ')[1]?.split(' (')[0] || "Cliente",
+        value: `R$ ${Number(p.value).toLocaleString('pt-BR')}`,
+        date: new Date(p.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        status: p.status
+      })) || []);
+
+      // 12. Fetch Tomorrow's Appointments for Confirmation Alert
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+      const { data: tomAppts } = await supabase
+        .from('nx_appointments')
+        .select(`
+          *,
+          clients (
+            name,
+            phone
+          )
+        `)
+        .eq('date', tomorrowStr)
+        .order('start_time');
+
+      setTomorrowAppointments(tomAppts?.map(appt => ({
+        id: appt.id,
+        name: (appt.clients as any)?.name || "Cliente",
+        phone: (appt.clients as any)?.phone || "",
+        time: appt.start_time.substring(0, 5)
+      })) || []);
+
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const stats = [
+    {
+      label: "Sessões Hoje",
+      value: statsData.sessionsToday,
+      icon: Calendar,
+      change: "+0 vs ontem", // Seria necessário query de ontem para ser dinâmico
+      trend: "up" as const,
+    },
+    {
+      label: "Faturamento do Mês",
+      value: statsData.monthlyRevenue,
+      icon: DollarSign,
+      change: "+0% vs mês anterior", // Seria necessário query do mês anterior para ser dinâmico
+      trend: "up" as const,
+    },
+    {
+      label: "A Receber",
+      value: statsData.pendingReceivables,
+      icon: TrendingUp,
+      change: "Agendado",
+      trend: "down" as const,
+    },
+    {
+      label: "Clientes Ativos",
+      value: statsData.activeClients,
+      icon: Users,
+      change: "Total",
+      trend: "up" as const,
+    },
+    {
+      label: "Fichas Concluídas",
+      value: statsData.anamnesisCompleted,
+      icon: FileText,
+      change: "Total",
+      trend: "up" as const,
+    },
+    {
+      label: "Principal Origem",
+      value: statsData.topDiscoverySource,
+      icon: Users,
+      change: "Maior canal",
+      trend: "up" as const,
+    },
+    {
+      label: "Tempo Médio de Sessão",
+      value: statsData.avgTime,
+      icon: Clock,
+      change: "Geral",
+      trend: "down" as const,
+    },
+  ];
+
+  return (
+    <>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="page-subtitle">
+            Bem-vindo de volta! Aqui está o resumo do seu dia.
+          </p>
+        </div>
+      </div>
+
+      {/* Pending Anamnesis Alert */}
+      {pendingAnamnesisAlerts.length > 0 && (
+        <div className="mb-6 p-4 rounded-xl border border-warning/20 bg-warning/5 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Anamneses Pendentes ({pendingAnamnesisAlerts.length})</h3>
+              <p className="text-sm text-muted-foreground">Estes clientes têm uma sessão nos próximos 7 dias e ainda não preencheram a ficha.</p>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 w-full sm:w-auto">
+            {pendingAnamnesisAlerts.slice(0, 2).map((alert, i) => (
+              <div key={i} className="flex items-center justify-between gap-4 text-sm bg-background p-2 rounded-lg border shadow-sm min-w-[280px]">
+                <div>
+                  <span className="font-medium text-foreground">{alert.name}</span>
+                  <span className="text-xs text-muted-foreground ml-2">Dia {alert.date}</span>
+                </div>
+                <Link to={`/clientes?id=${alert.client_id}`} className="text-xs text-primary font-medium hover:underline">
+                  Ver Perfil
+                </Link>
+              </div>
+            ))}
+            {pendingAnamnesisAlerts.length > 2 && (
+              <Link to="/clientes" className="text-xs text-center text-muted-foreground hover:text-foreground">
+                + {pendingAnamnesisAlerts.length - 2} outros
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tomorrow Confirmation Alert */}
+      {tomorrowAppointments.length > 0 && (
+        <div className="mb-6 p-4 rounded-xl border border-primary/20 bg-primary/5 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+          <div className="flex items-start gap-3">
+            <Calendar className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Confirmações para Amanhã ({tomorrowAppointments.length})</h3>
+              <p className="text-sm text-muted-foreground">Envie uma mensagem rápida para confirmar a presença dos clientes de amanhã.</p>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 w-full sm:w-auto">
+            {tomorrowAppointments.slice(0, 2).map((appt, i) => (
+              <div key={i} className="flex items-center justify-between gap-4 text-sm bg-background p-3 rounded-lg border shadow-sm min-w-[320px]">
+                <div className="flex flex-col">
+                  <span className="font-medium text-foreground">{appt.name}</span>
+                  <span className="text-xs text-muted-foreground">Amanhã às {appt.time}</span>
+                </div>
+                <a
+                  href={`https://wa.me/55${appt.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                    `Olá ${appt.name}! Passando para confirmar seu horário amanhã, dia ${new Date(new Date().setDate(new Date().getDate() + 1)).toLocaleDateString('pt-BR')}, às ${appt.time}. Podemos confirmar?`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-[#25D366] hover:bg-[#128C7E] text-white rounded-md text-xs font-bold transition-colors"
+                >
+                  <Phone className="h-3 w-3" /> Confirmar
+                </a>
+              </div>
+            ))}
+            {tomorrowAppointments.length > 2 && (
+              <p className="text-xs text-center text-muted-foreground">
+                + {tomorrowAppointments.length - 2} outros agendamentos para amanhã
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {stats.map((stat) => (
+          <div key={stat.label} className="stat-card group">
+            <div className="flex items-start justify-between">
+              <div className="rounded-lg bg-accent p-2.5">
+                <stat.icon className="h-5 w-5 text-primary" />
+              </div>
+              <span
+                className={`inline-flex items-center gap-1 text-xs font-medium ${stat.trend === "up"
+                  ? "text-success"
+                  : "text-muted-foreground"
+                  }`}
+              >
+                {stat.trend === "up" ? (
+                  <ArrowUpRight className="h-3 w-3" />
+                ) : (
+                  <ArrowDownRight className="h-3 w-3" />
+                )}
+                {stat.change}
+              </span>
+            </div>
+            <div className="mt-4">
+              <p className="text-2xl font-bold text-foreground">
+                {loading ? "..." : stat.value}
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">{stat.label}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Today's Clients */}
+        <div className="lg:col-span-2 bg-card rounded-xl border shadow-sm">
+          <div className="p-6 border-b">
+            <h2 className="text-lg font-semibold text-foreground">
+              Próximos Clientes Hoje
+            </h2>
+          </div>
+          <div className="divide-y min-h-[200px]">
+            {loading ? (
+              <div className="p-12 text-center text-muted-foreground">Carregando...</div>
+            ) : todayClients.length > 0 ? (
+              todayClients.map((client, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between p-4 px-6 hover:bg-accent/50 transition-colors"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent text-sm font-semibold text-primary">
+                      {client.name.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        {client.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {client.type}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm font-medium text-foreground">
+                      {client.time}
+                    </span>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${client.status === "Confirmado"
+                        ? "bg-success/10 text-success"
+                        : "bg-warning/10 text-warning"
+                        }`}
+                    >
+                      {client.status}
+                    </span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="p-12 text-center text-muted-foreground">Nenhum agendamento para hoje.</div>
+            )}
+          </div>
+        </div>
+
+        {/* Recent Payments */}
+        <div className="bg-card rounded-xl border shadow-sm">
+          <div className="p-6 border-b">
+            <h2 className="text-lg font-semibold text-foreground">
+              Pagamentos Recentes
+            </h2>
+          </div>
+          <div className="divide-y min-h-[200px]">
+            {loading ? (
+              <div className="p-12 text-center text-muted-foreground">Carregando...</div>
+            ) : recentPayments.length > 0 ? (
+              recentPayments.map((payment, i) => (
+                <div key={i} className="p-4 px-6">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-foreground">
+                      {payment.client}
+                    </p>
+                    <p className="text-sm font-bold text-foreground">
+                      {payment.value}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-xs text-muted-foreground">
+                      {payment.date}
+                    </p>
+                    <span className="text-xs font-medium text-success">
+                      {payment.status}
+                    </span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="p-12 text-center text-muted-foreground">Nenhum pagamento recente.</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Charts Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        {/* Revenue Trend Chart */}
+        <div className="bg-card rounded-xl border shadow-sm p-6">
+          <h2 className="text-lg font-semibold text-foreground mb-4">Desempenho Financeiro (Últimos 7 dias)</h2>
+          <div className="h-[280px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={revenueChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(var(--success))" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="hsl(var(--success))" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(var(--destructive))" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="hsl(var(--destructive))" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `R$${value}`} />
+                <RechartsTooltip
+                  formatter={(value: number, name: string) => {
+                    const label = name === 'income' ? 'Receita' : name === 'expense' ? 'Despesa' : 'Lucro';
+                    return [`R$ ${value}`, label];
+                  }}
+                  labelStyle={{ color: 'hsl(var(--foreground))' }}
+                  contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
+                />
+                <Area type="monotone" dataKey="income" stroke="hsl(var(--success))" strokeWidth={2} fillOpacity={1} fill="url(#colorIncome)" />
+                <Area type="monotone" dataKey="expense" stroke="hsl(var(--destructive))" strokeWidth={2} fillOpacity={1} fill="url(#colorExpense)" />
+                <Area type="monotone" dataKey="profit" stroke="hsl(var(--primary))" strokeWidth={2} fillOpacity={1} fill="url(#colorProfit)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex items-center justify-center gap-6 mt-4">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-success" />
+              <span className="text-xs text-muted-foreground">Receita</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-destructive" />
+              <span className="text-xs text-muted-foreground">Despesa</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-primary" />
+              <span className="text-xs text-muted-foreground">Lucro</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Appointments Status Chart */}
+        <div className="bg-card rounded-xl border shadow-sm p-6 relative">
+          <h2 className="text-lg font-semibold text-foreground mb-4">Status de Agendamentos (Mês Atual)</h2>
+          <div className="h-[280px] flex justify-center items-center">
+            {appointmentsStatusData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={appointmentsStatusData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={70}
+                    outerRadius={100}
+                    paddingAngle={5}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {appointmentsStatusData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip
+                    contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
+                    itemStyle={{ color: 'hsl(var(--foreground))' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex flex-col items-center text-muted-foreground gap-2">
+                <Calendar className="h-8 w-8 opacity-20" />
+                <p>Sem dados no mês atual</p>
+              </div>
+            )}
+
+            {/* Custom Legend */}
+            {appointmentsStatusData.length > 0 && (
+              <div className="absolute right-8 top-1/2 -translate-y-1/2 flex flex-col gap-3">
+                {appointmentsStatusData.map((entry, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.fill }} />
+                    <div className="flex flex-col">
+                      <span className="text-sm text-foreground font-medium leading-tight">{entry.name}</span>
+                      <span className="text-xs text-muted-foreground leading-tight">{entry.value} agendamentos</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
+
+export default Index;
