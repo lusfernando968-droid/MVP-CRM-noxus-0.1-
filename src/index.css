@@ -4,6 +4,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Safe area support para iPhone com notch/home indicator */
+:root {
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -144,23 +149,31 @@
   }
 
   .stat-card {
-    @apply bg-card rounded-xl border p-6 shadow-sm transition-all duration-200 hover:shadow-md;
+    @apply bg-card rounded-xl border p-4 lg:p-6 shadow-sm transition-all duration-200 hover:shadow-md;
   }
 
   .page-container {
-    @apply p-6 lg:p-8 space-y-6;
+    /* Mobile: padding mais compacto com espaço para o header móvel */
+    @apply p-4 lg:p-8 space-y-4 lg:space-y-6;
+    /* Ajuste de topo no mobile para não colidir com nada */
+    padding-top: 1rem;
   }
 
   .page-header {
-    @apply flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4;
+    @apply flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3;
   }
 
   .page-title {
-    @apply text-2xl font-bold text-foreground tracking-tight;
+    @apply text-xl lg:text-2xl font-bold text-foreground tracking-tight;
   }
 
   .page-subtitle {
     @apply text-muted-foreground text-sm;
+  }
+
+  /* Safe area bottom para bottom nav no iOS */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 

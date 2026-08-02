@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { AppSidebar } from "@/components/AppSidebar";
+import { BottomNav } from "@/components/BottomNav";
+import { MobileHeader } from "@/components/MobileHeader";
 import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -21,15 +23,20 @@ export function Layout({ children }: LayoutProps) {
   useEffect(() => {
     let mounted = true;
 
+    // ✅ MODO DEMO: Ignora autenticação para testes locais
+    const isDemoMode = localStorage.getItem("noxus_demo_mode") === "true";
+    if (isDemoMode) {
+      if (mounted) setIsInitializing(false);
+      return;
+    }
+
     const checkSession = async (session: any) => {
       if (!session) {
-        if (mounted) setIsInitializing(false); // <= CRÍTICO: Libera o lock visual da tela
-        // Sem sessão: manda para login (independente da rota)
+        if (mounted) setIsInitializing(false);
         navigate("/auth", { replace: true });
         return;
       }
 
-      // Tem sessão: verifica se usuário está ativo
       try {
         const { data: profile, error } = await supabase
           .from('users')
@@ -55,19 +62,16 @@ export function Layout({ children }: LayoutProps) {
 
         if (profile && (profile.is_active === false || hasExpired)) {
           if (mounted) setIsInitializing(false);
-          // Podemos passar um state pro Inactive.tsx saber se foi bloqueado ou expirado depois, mas manda pra mesma tela de "Inativo" por hora.
           navigate("/inativo", { replace: true });
         } else {
           if (mounted) setIsInitializing(false);
         }
       } catch (err) {
-        // Em caso de erro estrutural na query, libera a tela mesmo assim
         console.error("Layout catch err:", err);
         if (mounted) setIsInitializing(false);
       }
     };
 
-    // 1. Check initial session right away
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (error) {
         console.error("Auth getSession Error:", error);
@@ -77,7 +81,6 @@ export function Layout({ children }: LayoutProps) {
       }
     });
 
-    // 2. Listen to future auth events
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log("Layout auth event:", event, session ? "COM sessão" : "SEM sessão");
       if (mounted) {
@@ -102,16 +105,30 @@ export function Layout({ children }: LayoutProps) {
 
   return (
     <div className="min-h-screen bg-surface flex w-full">
+      {/* Sidebar — apenas desktop */}
       <AppSidebar />
+
+      {/* Header — apenas mobile */}
+      <MobileHeader />
+
       <main className={cn(
         "flex-1 min-h-screen transition-all duration-300 relative",
-        collapsed ? "lg:ml-[72px]" : "lg:ml-64"
+        // Desktop: margem para sidebar
+        collapsed ? "lg:ml-[72px]" : "lg:ml-64",
+        // Mobile: padding inferior para a bottom nav + superior para o header fixo
+        "pb-20 pt-14 lg:pb-0 lg:pt-0"
       )}>
         <div className="page-container animate-fade-in">
           {children}
         </div>
-        <SupportChat />
+        {/* SupportChat — apenas desktop */}
+        <div className="hidden lg:block">
+          <SupportChat />
+        </div>
       </main>
+
+      {/* Bottom Navigation — apenas mobile */}
+      <BottomNav />
     </div>
   );
 }

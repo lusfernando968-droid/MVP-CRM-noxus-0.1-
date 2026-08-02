@@ -10,9 +10,16 @@ import {
   ArrowDownRight,
   AlertCircle,
   FileText,
-  Phone
+  Phone,
+  CheckCircle2
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
 import {
   AreaChart,
   Area,
@@ -53,6 +60,14 @@ const Index = () => {
   const [pendingAnamnesisAlerts, setPendingAnamnesisAlerts] = useState<any[]>([]);
   const [tomorrowAppointments, setTomorrowAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
+  const [selectedCheckout, setSelectedCheckout] = useState<any>(null);
+  const [checkoutData, setCheckoutData] = useState({
+    status: 'Recebido',
+    value: 0,
+    paymentMethod: 'Pix'
+  });
 
   const fetchDashboardData = async () => {
     try {
@@ -256,10 +271,14 @@ const Index = () => {
         .order('start_time');
 
       setTodayClients(nextClients?.map(appt => ({
+        id: appt.id,
+        client_id: appt.client_id,
         name: (appt.clients as any)?.name || "Desconhecido",
         time: appt.start_time.substring(0, 5),
         type: appt.notes || "Sessão de Tattoo",
-        status: appt.status
+        status: appt.status,
+        value: appt.value || 0,
+        date: appt.date
       })) || []);
 
       // 6. Fetch Recent Payments
@@ -311,6 +330,60 @@ const Index = () => {
   useEffect(() => {
     fetchDashboardData();
   }, []);
+
+  const openCheckout = (appt: any) => {
+    setSelectedCheckout(appt);
+    setCheckoutData({
+      status: 'Recebido',
+      value: appt.value || 0,
+      paymentMethod: 'Pix'
+    });
+    setCheckoutModalOpen(true);
+  };
+
+  const handleCheckout = async () => {
+    if (!selectedCheckout) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Você precisa estar logado.");
+        return;
+      }
+
+      // Update Appointment
+      const finalStatus = checkoutData.status === 'Recebido' || checkoutData.status === 'Apenas Consulta' ? 'Concluído' : 'Cancelado';
+      const { error: apptError } = await supabase
+        .from('nx_appointments')
+        .update({ status: finalStatus, value: checkoutData.value })
+        .eq('id', selectedCheckout.id);
+
+      if (apptError) throw apptError;
+
+      // Insert Financial Transaction if received
+      if (checkoutData.status === 'Recebido' && checkoutData.value > 0) {
+        const { error: finError } = await supabase
+          .from('nx_financial_transactions')
+          .insert({
+            description: `Sessão - ${selectedCheckout.name} (${checkoutData.paymentMethod})`,
+            value: checkoutData.value,
+            type: 'entrada',
+            status: 'Pago',
+            date: selectedCheckout.date,
+            appointment_id: selectedCheckout.id,
+            user_id: user.id
+          });
+        
+        if (finError) throw finError;
+      }
+
+      toast.success("Sessão baixada com sucesso!");
+      setCheckoutModalOpen(false);
+      fetchDashboardData();
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao dar baixa na sessão.");
+    }
+  };
 
   const stats = [
     {
@@ -377,22 +450,22 @@ const Index = () => {
 
       {/* Pending Anamnesis Alert */}
       {pendingAnamnesisAlerts.length > 0 && (
-        <div className="mb-6 p-4 rounded-xl border border-warning/20 bg-warning/5 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+        <div className="mb-4 p-4 rounded-xl border border-warning/20 bg-warning/5 flex flex-col gap-3">
           <div className="flex items-start gap-3">
             <AlertCircle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
             <div>
               <h3 className="text-sm font-semibold text-foreground">Anamneses Pendentes ({pendingAnamnesisAlerts.length})</h3>
-              <p className="text-sm text-muted-foreground">Estes clientes têm uma sessão nos próximos 7 dias e ainda não preencheram a ficha.</p>
+              <p className="text-sm text-muted-foreground">Clientes com sessão nos próximos 7 dias sem ficha preenchida.</p>
             </div>
           </div>
-          <div className="flex flex-col gap-2 w-full sm:w-auto">
+          <div className="flex flex-col gap-2">
             {pendingAnamnesisAlerts.slice(0, 2).map((alert, i) => (
-              <div key={i} className="flex items-center justify-between gap-4 text-sm bg-background p-2 rounded-lg border shadow-sm min-w-[280px]">
-                <div>
-                  <span className="font-medium text-foreground">{alert.name}</span>
-                  <span className="text-xs text-muted-foreground ml-2">Dia {alert.date}</span>
+              <div key={i} className="flex items-center justify-between gap-2 text-sm bg-background p-2 rounded-lg border shadow-sm">
+                <div className="min-w-0">
+                  <span className="font-medium text-foreground truncate block">{alert.name}</span>
+                  <span className="text-xs text-muted-foreground">Dia {alert.date}</span>
                 </div>
-                <Link to={`/clientes?id=${alert.client_id}`} className="text-xs text-primary font-medium hover:underline">
+                <Link to={`/clientes?id=${alert.client_id}`} className="text-xs text-primary font-medium hover:underline shrink-0">
                   Ver Perfil
                 </Link>
               </div>
@@ -408,19 +481,19 @@ const Index = () => {
 
       {/* Tomorrow Confirmation Alert */}
       {tomorrowAppointments.length > 0 && (
-        <div className="mb-6 p-4 rounded-xl border border-primary/20 bg-primary/5 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+        <div className="mb-4 p-4 rounded-xl border border-primary/20 bg-primary/5 flex flex-col gap-3">
           <div className="flex items-start gap-3">
             <Calendar className="h-5 w-5 text-primary shrink-0 mt-0.5" />
             <div>
               <h3 className="text-sm font-semibold text-foreground">Confirmações para Amanhã ({tomorrowAppointments.length})</h3>
-              <p className="text-sm text-muted-foreground">Envie uma mensagem rápida para confirmar a presença dos clientes de amanhã.</p>
+              <p className="text-sm text-muted-foreground">Envie mensagem rápida para confirmar presença dos clientes de amanhã.</p>
             </div>
           </div>
-          <div className="flex flex-col gap-2 w-full sm:w-auto">
+          <div className="flex flex-col gap-2">
             {tomorrowAppointments.slice(0, 2).map((appt, i) => (
-              <div key={i} className="flex items-center justify-between gap-4 text-sm bg-background p-3 rounded-lg border shadow-sm min-w-[320px]">
-                <div className="flex flex-col">
-                  <span className="font-medium text-foreground">{appt.name}</span>
+              <div key={i} className="flex items-center justify-between gap-2 text-sm bg-background p-3 rounded-lg border shadow-sm">
+                <div className="flex flex-col min-w-0">
+                  <span className="font-medium text-foreground truncate">{appt.name}</span>
                   <span className="text-xs text-muted-foreground">Amanhã às {appt.time}</span>
                 </div>
                 <a
@@ -429,7 +502,7 @@ const Index = () => {
                   )}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-3 py-1.5 bg-[#25D366] hover:bg-[#128C7E] text-white rounded-md text-xs font-bold transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#25D366] hover:bg-[#128C7E] text-white rounded-md text-xs font-bold transition-colors shrink-0"
                 >
                   <Phone className="h-3 w-3" /> Confirmar
                 </a>
@@ -444,8 +517,8 @@ const Index = () => {
         </div>
       )}
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      {/* Stats Grid — 2 colunas no mobile, 3-4 no desktop */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 lg:gap-4">
         {stats.map((stat) => (
           <div key={stat.label} className="stat-card group">
             <div className="flex items-start justify-between">
@@ -512,13 +585,24 @@ const Index = () => {
                       {client.time}
                     </span>
                     <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${client.status === "Confirmado"
+                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${client.status === "Confirmado" || client.status === "Concluído"
                         ? "bg-success/10 text-success"
                         : "bg-warning/10 text-warning"
                         }`}
                     >
                       {client.status}
                     </span>
+                    {client.status !== 'Concluído' && client.status !== 'Cancelado' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs px-2 rounded-full border-primary/20 text-primary hover:bg-primary/10 ml-2"
+                        onClick={() => openCheckout(client)}
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                        Dar Baixa
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))
@@ -571,7 +655,7 @@ const Index = () => {
         {/* Revenue Trend Chart */}
         <div className="bg-card rounded-xl border shadow-sm p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4">Desempenho Financeiro (Últimos 7 dias)</h2>
-          <div className="h-[280px]">
+          <div className="h-[220px] lg:h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={revenueChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <defs>
@@ -624,7 +708,7 @@ const Index = () => {
         {/* Appointments Status Chart */}
         <div className="bg-card rounded-xl border shadow-sm p-6 relative">
           <h2 className="text-lg font-semibold text-foreground mb-4">Status de Agendamentos (Mês Atual)</h2>
-          <div className="h-[280px] flex justify-center items-center">
+          <div className="h-[220px] lg:h-[280px] flex justify-center items-center">
             {appointmentsStatusData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -672,6 +756,72 @@ const Index = () => {
           </div>
         </div>
       </div>
+
+      {/* Checkout Modal */}
+      <Dialog open={checkoutModalOpen} onOpenChange={setCheckoutModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Finalizar Sessão (Dar Baixa)</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="bg-muted p-3 rounded-md flex flex-col gap-1 text-sm">
+              <span className="font-semibold text-foreground">Cliente: {selectedCheckout?.name}</span>
+              <span className="text-muted-foreground">Horário: {selectedCheckout?.time} - {selectedCheckout?.type}</span>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Resultado da Sessão</Label>
+              <Select
+                value={checkoutData.status}
+                onValueChange={(val) => setCheckoutData(prev => ({ ...prev, status: val }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o resultado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Recebido">Realizada / Pago</SelectItem>
+                  <SelectItem value="Apenas Consulta">Apenas Consulta (Sem Custo)</SelectItem>
+                  <SelectItem value="Cancelado">Faltou / Cancelado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {checkoutData.status === 'Recebido' && (
+              <>
+                <div className="space-y-2">
+                  <Label>Valor Recebido (R$)</Label>
+                  <Input
+                    type="number"
+                    value={checkoutData.value}
+                    onChange={(e) => setCheckoutData(prev => ({ ...prev, value: Number(e.target.value) }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Método de Pagamento</Label>
+                  <Select
+                    value={checkoutData.paymentMethod}
+                    onValueChange={(val) => setCheckoutData(prev => ({ ...prev, paymentMethod: val }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Forma de pagamento" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Pix">Pix</SelectItem>
+                      <SelectItem value="Dinheiro">Dinheiro</SelectItem>
+                      <SelectItem value="Cartão de Crédito">Cartão de Crédito</SelectItem>
+                      <SelectItem value="Cartão de Débito">Cartão de Débito</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCheckoutModalOpen(false)}>Cancelar</Button>
+            <Button onClick={handleCheckout}>Confirmar Baixa</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

@@ -159,28 +159,11 @@ export function AppSidebar() {
 
   return (
     <>
-      {/* Mobile trigger */}
-      <button
-        onClick={() => setOpenMobile(true)}
-        className="fixed top-4 left-4 z-50 lg:hidden rounded-lg bg-sidebar p-2 text-sidebar-foreground shadow-lg"
-      >
-        <Menu className="h-5 w-5" />
-      </button>
-
-      {/* Mobile overlay */}
-      {openMobile && (
-        <div
-          className="fixed inset-0 z-40 bg-foreground/20 backdrop-blur-sm lg:hidden"
-          onClick={() => setOpenMobile(false)}
-        />
-      )}
-
-      {/* Sidebar */}
+      {/* Sidebar — apenas desktop (lg+) */}
       <aside
         className={cn(
-          "fixed left-0 top-0 z-50 flex h-screen flex-col bg-sidebar text-sidebar-foreground transition-all duration-300",
-          collapsed ? "w-[72px]" : "w-64",
-          openMobile ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          "fixed left-0 top-0 z-50 hidden lg:flex h-screen flex-col bg-sidebar text-sidebar-foreground transition-all duration-300",
+          collapsed ? "w-[72px]" : "w-64"
         )}
       >
         {/* Subtle Background Detail */}
@@ -211,7 +194,6 @@ export function AppSidebar() {
           </div>
           <button
             onClick={() => {
-              setOpenMobile(false);
               setCollapsed(!collapsed);
             }}
             className="hidden lg:flex h-7 w-7 items-center justify-center rounded-md text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-all duration-300 group"
@@ -221,12 +203,6 @@ export function AppSidebar() {
             ) : (
               <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
             )}
-          </button>
-          <button
-            onClick={() => setOpenMobile(false)}
-            className="lg:hidden h-7 w-7 flex items-center justify-center rounded-md text-sidebar-foreground/60 hover:text-sidebar-foreground"
-          >
-            <X className="h-4 w-4" />
           </button>
         </div>
 

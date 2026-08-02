@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, Plus, Check, User, Calendar, Clock, Banknote, CalendarDays, Activity } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Check, User, Calendar, Clock, Banknote, CalendarDays, Activity, CheckCircle2 } from "lucide-react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -12,6 +12,7 @@ import interactionPlugin from "@fullcalendar/interaction";
 import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
 
 const DAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MONTHS = [
@@ -40,12 +41,38 @@ const Agenda = () => {
   const [clients, setClients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [mobileViewType, setMobileViewType] = useState<string>("timeGridDay");
+  const calendarRef = useRef<any>(null);
+  const [selectedDay, setSelectedDay] = useState(() => {
+    const d = new Date(); d.setHours(0,0,0,0); return d;
+  });
+  const [currentWeekStart, setCurrentWeekStart] = useState(() => {
+    const today = new Date();
+    const d = new Date(today);
+    d.setDate(today.getDate() - today.getDay());
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
+
+  const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
+  const [selectedCheckout, setSelectedCheckout] = useState<Appointment | null>(null);
+  const [checkoutData, setCheckoutData] = useState({
+    status: 'Recebido',
+    value: 0,
+    paymentMethod: 'Pix'
+  });
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  useEffect(() => {
+    if (isMobile) {
+      calendarRef.current?.getApi()?.changeView(mobileViewType);
+    }
+  }, [mobileViewType, isMobile]);
 
   const fetchAppointments = async () => {
     try {
@@ -375,12 +402,68 @@ const Agenda = () => {
     try {
       const appt = appointments.find(a => a.id === id);
       if (!appt) return;
-      await confirmAppointmentAndFinance(id, appt.client_id, appt.value, appt.date, appt.client_name || 'Cliente', 'Confirmado', appt.deposit, appt.deposit_date);
-      toast.success('Agendamento confirmado!');
+      
+      const clientName = appt.client_name || 'Cliente';
+      await confirmAppointmentAndFinance(id, appt.client_id, appt.value, appt.date, clientName, 'Confirmado', appt.deposit, appt.deposit_date);
       await fetchAppointments();
+      toast.success("Agendamento confirmado com sucesso!");
     } catch (error) {
-      console.error('Error confirming appointment:', error);
-      toast.error('Erro ao confirmar agendamento.');
+      console.error(error);
+      toast.error("Erro ao confirmar agendamento.");
+    }
+  };
+
+  const openCheckout = (appt: Appointment, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedCheckout(appt);
+    setCheckoutData({
+      status: 'Recebido',
+      value: appt.value || 0,
+      paymentMethod: 'Pix'
+    });
+    setCheckoutModalOpen(true);
+  };
+
+  const handleCheckout = async () => {
+    if (!selectedCheckout) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Você precisa estar logado.");
+        return;
+      }
+
+      const finalStatus = checkoutData.status === 'Recebido' || checkoutData.status === 'Apenas Consulta' ? 'Concluído' : 'Cancelado';
+      const { error: apptError } = await supabase
+        .from('nx_appointments')
+        .update({ status: finalStatus, value: checkoutData.value })
+        .eq('id', selectedCheckout.id);
+
+      if (apptError) throw apptError;
+
+      if (checkoutData.status === 'Recebido' && checkoutData.value > 0) {
+        const clientName = selectedCheckout.client_name || 'Cliente';
+        const { error: finError } = await supabase
+          .from('nx_financial_transactions')
+          .insert({
+            description: `Sessão - ${clientName} (${checkoutData.paymentMethod})`,
+            value: checkoutData.value,
+            type: 'entrada',
+            status: 'Pago',
+            date: selectedCheckout.date,
+            appointment_id: selectedCheckout.id,
+            user_id: user.id
+          });
+        
+        if (finError) throw finError;
+      }
+
+      toast.success("Sessão baixada com sucesso!");
+      setCheckoutModalOpen(false);
+      fetchAppointments();
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao dar baixa na sessão.");
     }
   };
 
@@ -389,38 +472,99 @@ const Agenda = () => {
     .filter(a => a.date === todayStr)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
+  // ── Week Strip helpers (Google Calendar style) ──
+  const WEEK_DAYS_SHORT = ["D", "S", "T", "Q", "Q", "S", "S"];
+
+  const getWeekDays = (weekStart: Date) => {
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart);
+      d.setDate(weekStart.getDate() + i);
+      days.push(d);
+    }
+    return days;
+  };
+
+  const weekDays = getWeekDays(currentWeekStart);
+
+  const navigateWeek = (direction: number) => {
+    const newStart = new Date(currentWeekStart);
+    newStart.setDate(newStart.getDate() + direction * 7);
+    setCurrentWeekStart(newStart);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const weekEnd = new Date(newStart); weekEnd.setDate(newStart.getDate() + 6);
+    const todayInWeek = today >= newStart && today <= weekEnd;
+    const newDay = todayInWeek ? today : new Date(newStart);
+    setSelectedDay(newDay);
+    calendarRef.current?.getApi()?.gotoDate(newDay);
+  };
+
+  const selectDay = (day: Date) => {
+    const d = new Date(day); d.setHours(0,0,0,0);
+    setSelectedDay(d);
+    calendarRef.current?.getApi()?.gotoDate(d);
+  };
+
+  const daysWithEvents = useMemo(
+    () => new Set(appointments.map(a => a.date)),
+    [appointments]
+  );
+
   return (
     <>
-      <div className="page-header">
+      {/* Page header — compacto no mobile */}
+      <div className={cn("page-header", isMobile && "mb-2")}>
         <div>
           <h1 className="page-title">Agenda</h1>
-          <p className="page-subtitle">Gerencie seus agendamentos</p>
+          <p className="page-subtitle hidden sm:block">Gerencie seus agendamentos</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={() => {
-            setEditingAppointment(null);
-            setFormData({
-              client_id: "",
-              date: new Date().toISOString().split("T")[0],
-              startTime: "09:00",
-              endTime: "10:00",
-              status: "Agendado",
-              value: 0,
-              deposit: 0,
-              deposit_date: ""
-            });
-            setModalOpen(true);
-          }}>
-            <Plus className="h-4 w-4 mr-2" />
-            Novo Agendamento
+          {isMobile && (
+            <div className="flex bg-muted p-1 rounded-md">
+              <button
+                onClick={() => setMobileViewType("timeGridDay")}
+                className={cn("px-3 py-1 text-xs font-medium rounded-sm transition-colors", mobileViewType === "timeGridDay" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground")}
+              >
+                Dia
+              </button>
+              <button
+                onClick={() => setMobileViewType("timeGridWeek")}
+                className={cn("px-3 py-1 text-xs font-medium rounded-sm transition-colors", mobileViewType === "timeGridWeek" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground")}
+              >
+                Semana
+              </button>
+            </div>
+          )}
+          <Button
+            size="sm"
+            onClick={() => {
+              setEditingAppointment(null);
+              setFormData({
+                client_id: "",
+                date: new Date().toISOString().split("T")[0],
+                startTime: "09:00",
+                endTime: "10:00",
+                status: "Agendado",
+                value: 0,
+                deposit: 0,
+                deposit_date: ""
+              });
+              setModalOpen(true);
+            }}
+            className="shrink-0"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="ml-1.5 hidden sm:inline">Novo Agendamento</span>
+            <span className="ml-1.5 sm:hidden">Novo</span>
           </Button>
         </div>
       </div>
 
+      {/* Agendamentos de Hoje — apenas desktop */}
       {todayAppointments.length > 0 && (
-        <div className="mb-6">
+        <div className="mb-2 hidden lg:block">
           <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-3">Agendamentos de Hoje</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {todayAppointments.map((appt) => (
               <div
                 key={appt.id}
@@ -458,54 +602,141 @@ const Agenda = () => {
                     Confirmar
                   </Button>
                 )}
+                {appt.status !== 'Concluído' && appt.status !== 'Cancelado' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs px-3 rounded-full border-primary/20 text-primary hover:bg-primary/10 ml-2"
+                    onClick={(e) => openCheckout(appt, e)}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                    Dar Baixa
+                  </Button>
+                )}
               </div>
             ))}
           </div>
         </div>
       )}
 
-      <div className="bg-card rounded-xl border shadow-sm p-4 h-[750px] overflow-x-hidden">
-        <FullCalendar
-          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-          initialView={isMobile ? "timeGridDay" : "timeGridWeek"}
-          events={calendarEvents}
-          locale="pt-br"
-          headerToolbar={{
-            left: isMobile ? "prev,next" : "prev,next today",
-            center: "title",
-            right: isMobile ? "timeGridDay" : "dayGridMonth,timeGridWeek,timeGridDay"
-          }}
-          height="100%"
-          slotMinTime="08:00:00"
-          slotMaxTime="22:00:00"
-          allDaySlot={false}
-          nowIndicator={true}
-          slotLabelFormat={{
-            hour: '2-digit',
-            minute: '2-digit',
-            omitZeroMinute: false,
-            meridiem: false
-          }}
-          eventClassNames={(arg) => {
-            const status = arg.event.extendedProps?.status || "Agendado";
-            return getEventClass(status);
-          }}
-          buttonText={{
-            today: 'Hoje',
-            month: 'Mês',
-            week: 'Semana',
-            day: 'Dia',
-            list: 'Lista'
-          }}
-          dateClick={handleDateClick}
-          eventClick={handleEventClick}
-          selectable={true}
-          selectMirror={true}
-          select={handleSelect}
-          editable={true}
-          eventDrop={handleEventChange}
-          eventResize={handleEventChange}
-        />
+      {/* Calendário — edge-to-edge no mobile, card no desktop */}
+      <div className={cn(
+        "bg-card border shadow-sm overflow-hidden flex flex-col",
+        isMobile
+          ? "-mx-4 -mb-4 mt-0 rounded-none border-x-0 border-b-0 h-[calc(100dvh-12rem)]"
+          : "rounded-xl p-4"
+      )}>
+
+        {/* Week Strip — apenas mobile (estilo Google Calendar) */}
+        {isMobile && (
+          <div className="border-b border-border/50 bg-card">
+            {/* Cabeçalho do mês + navegação */}
+            <div className="flex items-center justify-between px-3 pt-2 pb-0.5">
+              <button
+                onClick={() => navigateWeek(-1)}
+                className="h-8 w-8 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="text-xs font-semibold text-muted-foreground capitalize">
+                {weekDays[0].toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
+              </span>
+              <button
+                onClick={() => navigateWeek(1)}
+                className="h-8 w-8 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Linha de dias */}
+            <div className="grid grid-cols-7 px-1 pb-2">
+              {weekDays.map((day, i) => {
+                const dayStr = day.toISOString().split("T")[0];
+                const isSelected = dayStr === selectedDay.toISOString().split("T")[0];
+                const isToday = dayStr === todayStr;
+                const hasEvents = daysWithEvents.has(dayStr);
+                return (
+                  <button
+                    key={i}
+                    onClick={() => selectDay(day)}
+                    className="flex flex-col items-center gap-0.5 py-1"
+                  >
+                    <span className={cn(
+                      "text-[10px] font-semibold uppercase",
+                      isToday && !isSelected ? "text-primary" : "text-muted-foreground"
+                    )}>
+                      {WEEK_DAYS_SHORT[day.getDay()]}
+                    </span>
+                    <span className={cn(
+                      "h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium transition-all duration-150",
+                      isSelected
+                        ? "bg-primary text-primary-foreground shadow-md"
+                        : isToday
+                        ? "text-primary font-bold"
+                        : "text-foreground"
+                    )}>
+                      {day.getDate()}
+                    </span>
+                    <span className={cn(
+                      "h-1 w-1 rounded-full transition-all",
+                      hasEvents
+                        ? isSelected ? "bg-primary-foreground" : "bg-primary"
+                        : "bg-transparent"
+                    )} />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* FullCalendar */}
+        <div className={cn(isMobile ? "flex-1 overflow-hidden" : "")} style={{ height: isMobile ? '100%' : '720px' }}>
+          <FullCalendar
+            ref={calendarRef}
+            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+            initialView={isMobile ? "timeGridDay" : "timeGridWeek"}
+            initialDate={selectedDay}
+            events={calendarEvents}
+            locale="pt-br"
+            headerToolbar={isMobile ? false : {
+              left: "prev,next today",
+              center: "title",
+              right: "dayGridMonth,timeGridWeek,timeGridDay"
+            }}
+            height="100%"
+            slotMinTime="08:00:00"
+            slotMaxTime="22:00:00"
+            allDaySlot={false}
+            nowIndicator={true}
+            slotLabelFormat={{
+              hour: '2-digit',
+              minute: '2-digit',
+              omitZeroMinute: false,
+              meridiem: false
+            }}
+            eventClassNames={(arg) => {
+              const status = arg.event.extendedProps?.status || "Agendado";
+              return getEventClass(status);
+            }}
+            buttonText={{
+              today: 'Hoje',
+              month: 'Mês',
+              week: 'Semana',
+              day: 'Dia',
+              list: 'Lista'
+            }}
+            dateClick={handleDateClick}
+            eventClick={handleEventClick}
+            selectable={true}
+            selectMirror={true}
+            select={handleSelect}
+            editable={true}
+            eventDrop={handleEventChange}
+            eventResize={handleEventChange}
+          />
+        </div>
       </div>
 
       {/* New Appointment Modal */}
@@ -617,6 +848,72 @@ const Agenda = () => {
               {editingAppointment ? "Atualizar Agendamento" : "Salvar Agendamento"}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Checkout Modal */}
+      <Dialog open={checkoutModalOpen} onOpenChange={setCheckoutModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Finalizar Sessão (Dar Baixa)</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="bg-muted p-3 rounded-md flex flex-col gap-1 text-sm">
+              <span className="font-semibold text-foreground">Cliente: {selectedCheckout?.client_name}</span>
+              <span className="text-muted-foreground">Horário: {selectedCheckout?.startTime} - {selectedCheckout?.endTime}</span>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Resultado da Sessão</Label>
+              <Select
+                value={checkoutData.status}
+                onValueChange={(val) => setCheckoutData(prev => ({ ...prev, status: val }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o resultado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Recebido">Realizada / Pago</SelectItem>
+                  <SelectItem value="Apenas Consulta">Apenas Consulta (Sem Custo)</SelectItem>
+                  <SelectItem value="Cancelado">Faltou / Cancelado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {checkoutData.status === 'Recebido' && (
+              <>
+                <div className="space-y-2">
+                  <Label>Valor Recebido (R$)</Label>
+                  <Input
+                    type="number"
+                    value={checkoutData.value}
+                    onChange={(e) => setCheckoutData(prev => ({ ...prev, value: Number(e.target.value) }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Método de Pagamento</Label>
+                  <Select
+                    value={checkoutData.paymentMethod}
+                    onValueChange={(val) => setCheckoutData(prev => ({ ...prev, paymentMethod: val }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Forma de pagamento" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Pix">Pix</SelectItem>
+                      <SelectItem value="Dinheiro">Dinheiro</SelectItem>
+                      <SelectItem value="Cartão de Crédito">Cartão de Crédito</SelectItem>
+                      <SelectItem value="Cartão de Débito">Cartão de Débito</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCheckoutModalOpen(false)}>Cancelar</Button>
+            <Button onClick={handleCheckout}>Confirmar Baixa</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

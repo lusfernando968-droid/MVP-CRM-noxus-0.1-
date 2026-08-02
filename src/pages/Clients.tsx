@@ -106,6 +106,10 @@ const Clients = () => {
 
   useEffect(() => {
     const checkUser = async () => {
+      // Modo demo: pula verificação de sessão
+      const isDemoMode = localStorage.getItem("noxus_demo_mode") === "true";
+      if (isDemoMode) return;
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         navigate("/auth");

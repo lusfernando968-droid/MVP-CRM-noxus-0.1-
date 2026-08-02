@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Pen, Mail, Lock, User, ArrowRight, MessageCircle, Phone } from "lucide-react";
+import { Pen, Mail, Lock, User, ArrowRight, MessageCircle, Phone, FlaskConical } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/components/ui/use-toast";
@@ -303,7 +303,24 @@ const Auth = () => {
                     </TabsContent>
                 </Tabs>
 
-                <p className="text-center text-xs text-muted-foreground mt-8 px-8 leading-relaxed">
+                {/* Botão de Modo Demo */}
+                <div className="mt-6 border-t border-border/30 pt-6">
+                    <button
+                        onClick={() => {
+                            localStorage.setItem("noxus_demo_mode", "true");
+                            navigate("/dashboard");
+                        }}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-dashed border-amber-500/50 bg-amber-500/5 text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/80 transition-all duration-200 text-sm font-medium group"
+                    >
+                        <FlaskConical className="h-4 w-4 group-hover:rotate-12 transition-transform" />
+                        Entrar no Modo Demo (sem login)
+                    </button>
+                    <p className="text-center text-xs text-muted-foreground mt-2">
+                        Apenas para testes locais. Dados não são salvos na nuvem.
+                    </p>
+                </div>
+
+                <p className="text-center text-xs text-muted-foreground mt-6 px-8 leading-relaxed">
                     Ao continuar, você concorda com nossos <button className="underline hover:text-primary transition-colors">Termos de Serviço</button> e <button className="underline hover:text-primary transition-colors">Política de Privacidade</button>.
                 </p>
             </div>
