@@ -21,6 +21,8 @@ import { DevDashboard } from "./pages/DevDashboard";
 import { Layout } from "@/components/Layout";
 import { Outlet } from "react-router-dom";
 
+import MasterAdmin from "./pages/MasterAdmin";
+
 // Authenticated layout wrapper
 const AuthLayout = () => {
   return (
@@ -44,6 +46,7 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/inativo" element={<Inactive />} />
             <Route path="/anamnese/:clientId" element={<AnamnesisForm />} />
+            <Route path="/master" element={<MasterAdmin />} />
 
             {/* Authenticated Routes with Persistent Layout */}
             <Route element={<AuthLayout />}>
