@@ -22,6 +22,7 @@ import {
   User as UserIcon,
   ChevronLeft,
   ChevronRight,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
@@ -36,6 +37,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const [user, setUser] = useState<{ email?: string; name?: string } | null>(null);
   const [role, setRole] = useState<string | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -67,6 +69,15 @@ export function AppSidebar() {
                 setRole(profile.role);
               }
             });
+
+          supabase
+            .from('nx_admin_users')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .single()
+            .then(({ data: adminData }) => {
+              if (adminData) setIsSuperAdmin(true);
+            });
         } else {
           console.log("Nenhuma sessão encontrada no carregamento inicial");
         }
@@ -97,6 +108,14 @@ export function AppSidebar() {
           });
           setRole(profile.role);
         }
+
+        const { data: adminData } = await supabase
+          .from('nx_admin_users')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .single();
+        if (adminData) setIsSuperAdmin(true);
+        else setIsSuperAdmin(false);
       } else {
         setUser(null);
         setRole(null);
@@ -111,12 +130,14 @@ export function AppSidebar() {
       { title: "Usuários", path: "/usuarios", icon: Users },
       { title: "Suporte Interno", path: "/suporte-admin", icon: MessageSquare },
       { title: "Vendas Noxus", path: "/dev-dashboard", icon: DollarSign },
+      ...(isSuperAdmin ? [{ title: "Super Admin", path: "/admin-noxus", icon: Shield }] : [])
     ]
     : [
       { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
       { title: "Agenda", path: "/agenda", icon: Calendar },
       { title: "Clientes", path: "/clientes", icon: Users },
       { title: "Financeiro", path: "/financeiro", icon: DollarSign },
+      ...(isSuperAdmin ? [{ title: "Super Admin", path: "/admin-noxus", icon: Shield }] : [])
     ];
 
   const handleLogout = async () => {

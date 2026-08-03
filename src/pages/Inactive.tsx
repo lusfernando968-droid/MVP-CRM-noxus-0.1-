@@ -24,13 +24,32 @@ export default function Inactive() {
                 return;
             }
 
-            const { data: profile } = await supabase
-                .from('users')
-                .select('is_active')
-                .eq('id', session.user.id)
+            const { data: adminProfile } = await supabase
+                .from('nx_admin_users')
+                .select('id')
+                .eq('user_id', session.user.id)
                 .single();
 
-            if (profile && profile.is_active === true) {
+            if (adminProfile) {
+                navigate("/dashboard", { replace: true });
+                return;
+            }
+
+            const { data: subProfile } = await supabase
+                .from('nx_subscriptions')
+                .select('expires_at, status')
+                .eq('user_id', session.user.id)
+                .single();
+
+            let hasExpired = false;
+            if (subProfile?.expires_at) {
+                const expirationDate = new Date(subProfile.expires_at);
+                if (new Date() > expirationDate) {
+                    hasExpired = true;
+                }
+            }
+
+            if (subProfile && subProfile.status === 'active' && !hasExpired) {
                 navigate("/dashboard", { replace: true });
             } else {
                 setLoading(false);

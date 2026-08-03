@@ -38,29 +38,42 @@ export function Layout({ children }: LayoutProps) {
       }
 
       try {
-        const { data: profile, error } = await supabase
-          .from('users')
-          .select('is_active, subscription_ends_at, role')
-          .eq('id', session.user.id)
+        const { data: adminProfile } = await supabase
+          .from('nx_admin_users')
+          .select('id')
+          .eq('user_id', session.user.id)
           .single();
 
-        if (error) {
+        if (adminProfile) {
+            // É admin, passa direto
+            if (mounted) setIsInitializing(false);
+            return;
+        }
+
+        const { data: subProfile, error } = await supabase
+          .from('nx_subscriptions')
+          .select('expires_at, status')
+          .eq('user_id', session.user.id)
+          .single();
+
+        if (error || !subProfile) {
           console.error("Layout Session Check Error:", error);
           if (mounted) setIsInitializing(false);
+          navigate("/inativo", { replace: true });
           return;
         }
 
         if (!mounted) return;
 
         let hasExpired = false;
-        if (profile?.subscription_ends_at && profile.role !== 'ADMIN') {
-          const expirationDate = new Date(profile.subscription_ends_at);
+        if (subProfile?.expires_at) {
+          const expirationDate = new Date(subProfile.expires_at);
           if (new Date() > expirationDate) {
             hasExpired = true;
           }
         }
 
-        if (profile && (profile.is_active === false || hasExpired)) {
+        if (subProfile.status !== 'active' || hasExpired) {
           if (mounted) setIsInitializing(false);
           navigate("/inativo", { replace: true });
         } else {

@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Pen, Mail, Lock, User, ArrowRight, MessageCircle, Phone, FlaskConical } from "lucide-react";
+import { Pen, Mail, Lock, User, ArrowRight, MessageCircle, Phone, FlaskConical, Key } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/components/ui/use-toast";
@@ -36,6 +36,7 @@ const Auth = () => {
     const [regEmail, setRegEmail] = useState("");
     const [regWhatsapp, setRegWhatsapp] = useState("");
     const [regPassword, setRegPassword] = useState("");
+    const [regAccessCode, setRegAccessCode] = useState("");
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -66,8 +67,26 @@ const Auth = () => {
 
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
+        
+        if (!regAccessCode) {
+            toast({ variant: "destructive", title: "Acesso Negado", description: "Um Código de Acesso é obrigatório." });
+            return;
+        }
+
         setLoading(true);
         try {
+            // Verifica o código ANTES de criar a conta
+            const { data: codeData, error: codeError } = await supabase
+                .from('nx_access_codes')
+                .select('*')
+                .eq('code', regAccessCode)
+                .eq('status', 'available')
+                .single();
+
+            if (codeError || !codeData) {
+                throw new Error("Código de Acesso inválido ou já utilizado.");
+            }
+
             const { data, error } = await supabase.auth.signUp({
                 email: regEmail,
                 password: regPassword,
@@ -81,12 +100,26 @@ const Auth = () => {
 
             if (error) throw error;
 
+            if (data.user) {
+                // Marca o código como usado
+                await supabase
+                    .from('nx_access_codes')
+                    .update({ status: 'used', used_by: data.user.id })
+                    .eq('id', codeData.id);
+                
+                // Cria a assinatura de 30 dias
+                const expiry = new Date();
+                expiry.setDate(expiry.getDate() + 30);
+                await supabase
+                    .from('nx_subscriptions')
+                    .insert({ user_id: data.user.id, expires_at: expiry.toISOString() });
+            }
+
             toast({
                 title: "Conta criada com sucesso!",
-                description: "Agora falta apenas o passo final de liberação.",
+                description: "Seja bem-vindo(a) ao Noxus.",
             });
 
-            // Se o usuário foi logado e criado com sucesso, mostramos o Modal do PIX em vez de ir logo pro painel
             if (data.session || data.user) {
                 setShowPixModal(true);
             }
@@ -282,6 +315,22 @@ const Auth = () => {
                                                 required
                                             />
                                         </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="reg-access-code" className="text-primary font-bold">Código de Acesso VIP</Label>
+                                        <div className="relative group">
+                                            <Key className="absolute left-3 top-3 h-4 w-4 text-primary transition-colors group-focus-within:text-primary" />
+                                            <Input
+                                                id="reg-access-code"
+                                                type="text"
+                                                placeholder="NOXUS-XXXX"
+                                                value={regAccessCode}
+                                                onChange={(e) => setRegAccessCode(e.target.value)}
+                                                className="pl-10 bg-primary/5 border-primary/30 focus:border-primary transition-all rounded-xl py-6 uppercase font-mono tracking-wider"
+                                                required
+                                            />
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">Fornecido pelo administrador do sistema.</p>
                                     </div>
                                 </CardContent>
                                 <CardFooter className="flex flex-col pt-4">

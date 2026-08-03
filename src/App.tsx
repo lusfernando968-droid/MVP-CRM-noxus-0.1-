@@ -14,6 +14,7 @@ import { SupportAdmin } from "./pages/SupportAdmin";
 import Users from "./pages/Users";
 import NotFound from "./pages/NotFound";
 import AnamnesisForm from "./pages/AnamnesisForm";
+import SuperAdmin from "./pages/SuperAdmin";
 import Inactive from "./pages/Inactive";
 import Landing from "./pages/Landing";
 import { DevDashboard } from "./pages/DevDashboard";
@@ -54,6 +55,7 @@ const App = () => (
               <Route path="/suporte-admin" element={<SupportAdmin />} />
               <Route path="/dev-dashboard" element={<DevDashboard />} />
               <Route path="/usuarios" element={<Users />} />
+              <Route path="/admin-noxus" element={<SuperAdmin />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />
