@@ -90,7 +90,7 @@ export default function MasterAdmin() {
           </div>
           <CardTitle className="text-3xl font-bold tracking-tight">Acesso Mestre</CardTitle>
           <CardDescription className="text-base">
-            Área restrita ao proprietário do sistema.
+            Área restrita ao proprietário oficial do sistema.
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleLogin}>
