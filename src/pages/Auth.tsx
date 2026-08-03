@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Pen, Mail, Lock, User, ArrowRight, MessageCircle, Phone, FlaskConical, Key } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/lib/supabase";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useToast } from "@/components/ui/use-toast";
 
 const Auth = () => {
@@ -41,8 +41,8 @@ const Auth = () => {
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         
-        if (!import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL.includes('fallback')) {
-            toast({ variant: "destructive", title: "Erro Crítico", description: "As variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY não estão configuradas na Vercel." });
+        if (!isSupabaseConfigured) {
+            toast({ variant: "destructive", title: "Erro Crítico", description: "O Banco de Dados não está conectado." });
             return;
         }
 
@@ -74,8 +74,8 @@ const Auth = () => {
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
         
-        if (!import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL.includes('fallback')) {
-            toast({ variant: "destructive", title: "Erro Crítico", description: "As variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY não estão configuradas na Vercel." });
+        if (!isSupabaseConfigured) {
+            toast({ variant: "destructive", title: "Erro Crítico", description: "O Banco de Dados não está conectado." });
             return;
         }
 
