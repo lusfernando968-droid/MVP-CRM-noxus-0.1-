@@ -14,6 +14,12 @@ export default function MasterAdmin() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL.includes('fallback')) {
+      toast.error("ERRO CRÍTICO: As variáveis de ambiente do Supabase não estão configuradas na Vercel! Vá no painel da Vercel em Settings > Environment Variables e adicione VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.", { duration: 10000 });
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -67,7 +73,7 @@ export default function MasterAdmin() {
       navigate('/admin-noxus');
     } catch (err: any) {
       console.error(err);
-      toast.error("Senha incorreta ou erro de conexão. (Verifique as chaves da Vercel)");
+      toast.error(`Erro: ${err.message || 'Erro desconhecido'} (Verifique as chaves da Vercel)`);
     } finally {
       setLoading(false);
     }

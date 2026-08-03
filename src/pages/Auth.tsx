@@ -40,6 +40,12 @@ const Auth = () => {
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
+        
+        if (!import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL.includes('fallback')) {
+            toast({ variant: "destructive", title: "Erro Crítico", description: "As variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY não estão configuradas na Vercel." });
+            return;
+        }
+
         setLoading(true);
         try {
             const { error } = await supabase.auth.signInWithPassword({
@@ -68,6 +74,11 @@ const Auth = () => {
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
         
+        if (!import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL.includes('fallback')) {
+            toast({ variant: "destructive", title: "Erro Crítico", description: "As variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY não estão configuradas na Vercel." });
+            return;
+        }
+
         if (!regAccessCode) {
             toast({ variant: "destructive", title: "Acesso Negado", description: "Um Código de Acesso é obrigatório." });
             return;
