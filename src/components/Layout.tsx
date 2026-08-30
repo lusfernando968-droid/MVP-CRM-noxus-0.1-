@@ -30,80 +30,22 @@ export function Layout({ children }: LayoutProps) {
       return;
     }
 
-    const checkSession = async (session: any) => {
-      if (!session) {
+    const checkSession = async () => {
+      const token = localStorage.getItem("noxus_token");
+      if (!token) {
         if (mounted) setIsInitializing(false);
         navigate("/auth", { replace: true });
         return;
       }
-
-      try {
-        const { data: adminProfile } = await supabase
-          .from('nx_admin_users')
-          .select('id')
-          .eq('user_id', session.user.id)
-          .single();
-
-        if (adminProfile) {
-            // É admin, passa direto
-            if (mounted) setIsInitializing(false);
-            return;
-        }
-
-        const { data: subProfile, error } = await supabase
-          .from('nx_subscriptions')
-          .select('expires_at, status')
-          .eq('user_id', session.user.id)
-          .single();
-
-        if (error || !subProfile) {
-          console.error("Layout Session Check Error:", error);
-          if (mounted) setIsInitializing(false);
-          navigate("/inativo", { replace: true });
-          return;
-        }
-
-        if (!mounted) return;
-
-        let hasExpired = false;
-        if (subProfile?.expires_at) {
-          const expirationDate = new Date(subProfile.expires_at);
-          if (new Date() > expirationDate) {
-            hasExpired = true;
-          }
-        }
-
-        if (subProfile.status !== 'active' || hasExpired) {
-          if (mounted) setIsInitializing(false);
-          navigate("/inativo", { replace: true });
-        } else {
-          if (mounted) setIsInitializing(false);
-        }
-      } catch (err) {
-        console.error("Layout catch err:", err);
-        if (mounted) setIsInitializing(false);
-      }
+      
+      // Temporário: Assume que se tem o token, está ativo para a migração inicial
+      if (mounted) setIsInitializing(false);
     };
 
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) {
-        console.error("Auth getSession Error:", error);
-      }
-      if (mounted) {
-        checkSession(session);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("Layout auth event:", event, session ? "COM sessão" : "SEM sessão");
-      if (mounted) {
-        checkSession(session);
-      }
-    });
+    checkSession();
 
     return () => {
       mounted = false;
-      subscription.unsubscribe();
     };
   }, [navigate]);
 

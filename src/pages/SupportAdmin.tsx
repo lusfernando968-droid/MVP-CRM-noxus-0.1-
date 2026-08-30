@@ -59,49 +59,19 @@ export function SupportAdmin() {
 
     useEffect(() => {
         fetchUsers();
-
-        // Subscribe to new messages globally for the list
-        const channel = supabase
-            .channel('support_admin_global')
-            .on(
-                'postgres_changes',
-                { event: 'INSERT', schema: 'public', table: 'nx_support_messages' },
-                () => fetchUsers()
-            )
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
+        const interval = setInterval(() => {
+            fetchUsers();
+        }, 3000);
+        return () => clearInterval(interval);
     }, []);
 
     useEffect(() => {
         if (selectedUser) {
             fetchMessages(selectedUser.id);
-
-            const channel = supabase
-                .channel(`support_chat_${selectedUser.id}`)
-                .on(
-                    'postgres_changes',
-                    {
-                        event: 'INSERT',
-                        schema: 'public',
-                        table: 'nx_support_messages',
-                        filter: `user_id=eq.${selectedUser.id}`
-                    },
-                    (payload) => {
-                        const msg = payload.new as Message;
-                        setMessages((prev) => {
-                            if (prev.some(m => m.id === msg.id)) return prev;
-                            return [...prev, msg];
-                        });
-                    }
-                )
-                .subscribe();
-
-            return () => {
-                supabase.removeChannel(channel);
-            };
+            const interval = setInterval(() => {
+                fetchMessages(selectedUser.id);
+            }, 3000);
+            return () => clearInterval(interval);
         }
     }, [selectedUser]);
 
@@ -113,43 +83,26 @@ export function SupportAdmin() {
 
     const fetchUsers = async () => {
         try {
-            // 1. Get all unique user IDs who sent messages
-            const { data: messageData, error: messageError } = await supabase
-                .from('nx_support_messages')
-                .select('user_id, message, created_at')
-                .order('created_at', { ascending: false });
+            const token = localStorage.getItem("noxus_token");
+            if (!token) return;
 
-            if (messageError) throw messageError;
-
-            const userIds = Array.from(new Set(messageData.map(m => m.user_id)));
-
-            if (userIds.length === 0) {
-                setUsers([]);
-                setLoading(false);
-                return;
-            }
-
-            // 2. Get user details from users table
-            const { data: userData, error: userError } = await supabase
-                .from('users')
-                .select('id, nome, email')
-                .in('id', userIds);
-
-            if (userError) throw userError;
-
-            // 3. Combine
-            const chatUsers: ChatUser[] = userData.map(u => {
-                const lastMsg = messageData.find(m => m.user_id === u.id);
-                return {
-                    id: u.id,
-                    nome: u.nome || "Usuário",
-                    email: u.email || "",
-                    last_message: lastMsg?.message,
-                    last_message_at: lastMsg?.created_at
-                };
+            const res = await fetch("http://localhost:3000/api/admin/support", {
+                headers: { "Authorization": `Bearer ${token}` }
             });
-
-            setUsers(chatUsers);
+            if (res.ok) {
+                const data = await res.json();
+                const chatUsers = data.map((u: any) => {
+                    const lastMsg = u.supportMessages && u.supportMessages.length > 0 ? u.supportMessages[0] : null;
+                    return {
+                        id: u.id,
+                        nome: u.name || "Usuário",
+                        email: u.email || "",
+                        last_message: lastMsg?.message,
+                        last_message_at: lastMsg?.createdAt
+                    };
+                });
+                setUsers(chatUsers);
+            }
         } catch (error) {
             console.error("Error fetching chat users:", error);
         } finally {
@@ -160,15 +113,14 @@ export function SupportAdmin() {
     const fetchMessages = async (userId: string) => {
         try {
             setLoadingMessages(true);
-            const { data, error } = await supabase
-                .from('nx_support_messages')
-                .select('*')
-                .eq('user_id', userId)
-                .order('created_at', { ascending: true });
+            const token = localStorage.getItem("noxus_token");
+            if (!token) return;
 
-            if (error) {
-                console.error("Error fetching messages via Supabase:", error);
-            } else if (data) {
+            const res = await fetch(`http://localhost:3000/api/admin/support/${userId}`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
                 setMessages(data);
             }
         } catch (err) {
@@ -183,23 +135,27 @@ export function SupportAdmin() {
         if (!newMessage.trim() || !selectedUser || sending) return;
 
         setSending(true);
-        const { data, error } = await supabase
-            .from('nx_support_messages')
-            .insert({
-                user_id: selectedUser.id,
-                message: newMessage.trim(),
-                is_from_support: true
-            })
-            .select()
-            .single();
+        try {
+            const token = localStorage.getItem("noxus_token");
+            if (!token) return;
 
-        if (error) {
-            console.error("Error sending response:", error);
-        } else {
-            setNewMessage("");
-            if (data) {
-                setMessages(prev => prev.some(m => m.id === data.id) ? prev : [...prev, data as Message]);
+            const res = await fetch(`http://localhost:3000/api/admin/support/${selectedUser.id}`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({ message: newMessage.trim() })
+            });
+            
+            if (res.ok) {
+                const msg = await res.json();
+                setMessages(prev => [...prev, msg]);
+                setNewMessage("");
+                fetchUsers(); // Update the sidebar last message
             }
+        } catch (error) {
+            console.error("Error sending response:", error);
         }
         setSending(false);
     };

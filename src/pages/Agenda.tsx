@@ -1,10 +1,20 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, Plus, Check, User, Calendar, Clock, Banknote, CalendarDays, Activity, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Check, User, Calendar, Clock, Banknote, CalendarDays, Activity, CheckCircle2, Trash2 } from "lucide-react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -35,6 +45,7 @@ interface Appointment {
 
 const Agenda = () => {
   const [modalOpen, setModalOpen] = useState(false);
+  const [deleteAlertOpen, setDeleteAlertOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -76,31 +87,16 @@ const Agenda = () => {
 
   const fetchAppointments = async () => {
     try {
-      const { data, error } = await supabase
-        .from('nx_appointments')
-        .select(`
-          *,
-          clients (
-            name
-          )
-        `);
+      setLoading(true);
+      const token = localStorage.getItem("noxus_token");
+      if (!token) return;
 
-      if (error) throw error;
-
-      const formatted = data.map((appt: any) => ({
-        id: appt.id,
-        client_id: appt.client_id,
-        client_name: appt.clients?.name || "Cliente Desconhecido",
-        date: appt.date,
-        startTime: appt.start_time.substring(0, 5),
-        endTime: appt.end_time.substring(0, 5),
-        value: Number(appt.value),
-        deposit: Number(appt.deposit),
-        deposit_date: appt.deposit_date,
-        status: appt.status
-      }));
-
-      setAppointments(formatted);
+      const res = await fetch("http://localhost:3000/api/appointments", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Erro");
+      const data = await res.json();
+      setAppointments(data);
     } catch (error) {
       console.error('Error fetching appointments:', error);
     } finally {
@@ -110,11 +106,13 @@ const Agenda = () => {
 
   const fetchClients = async () => {
     try {
-      const { data, error } = await supabase
-        .from('nx_clients')
-        .select('id, name')
-        .order('name');
-      if (error) throw error;
+      const token = localStorage.getItem("noxus_token");
+      if (!token) return;
+      const res = await fetch("http://localhost:3000/api/clients", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Erro");
+      const data = await res.json();
       setClients(data || []);
     } catch (error) {
       console.error('Error fetching clients:', error);
@@ -227,130 +225,68 @@ const Agenda = () => {
     }
   };
 
-  const confirmAppointmentAndFinance = async (id: string, clientId: string, value: number, date: string, clientName: string, newStatus?: string, deposit: number = 0, depositDate?: string) => {
-    // 1. Update appointment status (if called externally with quick confirm)
-    if (newStatus) {
-      const { error: apptError } = await supabase.from('nx_appointments').update({ status: newStatus }).eq('id', id);
-      if (apptError) throw apptError;
-    }
 
-    // 2. Check/Insert financial transaction
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: existingTxs } = await supabase
-        .from('nx_financial_transactions')
-        .select('id, description')
-        .eq('appointment_id', id);
 
-      const depositTx = existingTxs?.find(tx => tx.description.startsWith('Sinal'));
-      const sessionTx = existingTxs?.find(tx => tx.description.startsWith('Sessão'));
+  const handleDelete = async () => {
+    if (!editingAppointment) return;
 
-      if (deposit > 0) {
-        if (depositTx) {
-          await supabase.from('nx_financial_transactions').update({ value: deposit, date: depositDate || date }).eq('id', depositTx.id);
-        } else {
-          await supabase.from('nx_financial_transactions').insert({
-            description: `Sinal - ${clientName}`,
-            value: deposit,
-            type: 'entrada',
-            status: 'Pago',
-            date: depositDate || date,
-            appointment_id: id,
-            user_id: user.id
-          });
-        }
-      } else if (depositTx) {
-        await supabase.from('nx_financial_transactions').delete().eq('id', depositTx.id);
-      }
+    try {
+      setLoading(true);
+      const token = localStorage.getItem("noxus_token");
+      if (!token) return;
 
-      const remainingValue = value - deposit;
-      if (remainingValue > 0) {
-        if (sessionTx) {
-          await supabase.from('nx_financial_transactions').update({ value: remainingValue, date: date }).eq('id', sessionTx.id);
-        } else {
-          await supabase.from('nx_financial_transactions').insert({
-            description: `Sessão - ${clientName}`,
-            value: remainingValue,
-            type: 'entrada',
-            status: 'Pago',
-            date: date,
-            appointment_id: id,
-            user_id: user.id
-          });
-        }
-      } else if (sessionTx) {
-        await supabase.from('nx_financial_transactions').delete().eq('id', sessionTx.id);
-      }
-    }
+      const res = await fetch(`http://localhost:3000/api/appointments/${editingAppointment.id}`, {
+        method: 'DELETE',
+        headers: { "Authorization": `Bearer ${token}` }
+      });
 
-    // 3. Increment client session count and update last visit
-    const { data: clientData } = await supabase
-      .from('nx_clients')
-      .select('sessions')
-      .eq('id', clientId)
-      .single();
+      if (!res.ok) throw new Error("Erro ao excluir agendamento.");
 
-    if (clientData) {
-      await supabase.from('nx_clients').update({
-        sessions: (clientData.sessions || 0) + 1,
-        last_visit: date
-      }).eq('id', clientId);
+      toast.success("Agendamento excluído com sucesso.");
+      setModalOpen(false);
+      setDeleteAlertOpen(false);
+      await fetchAppointments();
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao excluir agendamento.");
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleSave = async () => {
     try {
-      // 1. Get user session (mock for now or real if Auth is ready)
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        alert("Você precisa estar logado para salvar.");
-        return;
-      }
-
-      // 2. Validation
       if (!formData.client_id) {
         alert("Por favor, selecione um cliente.");
         return;
       }
 
-      // 3. Save appointment
-      const appointmentData = {
-        client_id: formData.client_id,
-        date: formData.date,
-        start_time: formData.startTime,
-        end_time: formData.endTime,
-        value: formData.value,
-        deposit: formData.deposit,
-        deposit_date: formData.deposit_date || null,
-        status: formData.status,
-        user_id: user.id
-      };
+      const token = localStorage.getItem("noxus_token");
+      if (!token) {
+        alert("Sessão expirada.");
+        return;
+      }
 
       if (editingAppointment) {
-        const { error } = await supabase
-          .from('nx_appointments')
-          .update(appointmentData)
-          .eq('id', editingAppointment.id);
-        if (error) throw error;
-
-        if (formData.status === 'Confirmado' || formData.status === 'Concluído') {
-          const clientName = clients.find(c => c.id === formData.client_id)?.name || 'Cliente';
-          await confirmAppointmentAndFinance(editingAppointment.id, formData.client_id, formData.value, formData.date, clientName, undefined, formData.deposit, formData.deposit_date);
-        } else if (formData.status === 'Cancelado' || formData.status === 'Agendado') {
-          await supabase.from('nx_financial_transactions').delete().eq('appointment_id', editingAppointment.id);
-        }
+        const res = await fetch(`http://localhost:3000/api/appointments/${editingAppointment.id}`, {
+          method: 'PUT',
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify(formData)
+        });
+        if (!res.ok) throw new Error("Erro ao atualizar");
       } else {
-        const { data, error } = await supabase
-          .from('nx_appointments')
-          .insert(appointmentData)
-          .select()
-          .single();
-        if (error) throw error;
-
-        if (formData.status === 'Confirmado' || formData.status === 'Concluído') {
-          const clientName = clients.find(c => c.id === formData.client_id)?.name || 'Cliente';
-          await confirmAppointmentAndFinance(data.id, formData.client_id, formData.value, formData.date, clientName, undefined, formData.deposit, formData.deposit_date);
-        }
+        const res = await fetch(`http://localhost:3000/api/appointments`, {
+          method: 'POST',
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify(formData)
+        });
+        if (!res.ok) throw new Error("Erro ao criar");
       }
 
       await fetchAppointments();
@@ -380,16 +316,28 @@ const Agenda = () => {
   const handleEventChange = async (changeInfo: any) => {
     const { event } = changeInfo;
     try {
-      const { error } = await supabase
-        .from('nx_appointments')
-        .update({
-          date: event.startStr.split("T")[0],
-          start_time: event.startStr.split("T")[1].substring(0, 5),
-          end_time: event.endStr ? event.endStr.split("T")[1].substring(0, 5) : undefined
-        })
-        .eq('id', event.id);
+      const token = localStorage.getItem("noxus_token");
+      if (!token) return;
 
-      if (error) throw error;
+      const appt = appointments.find(a => a.id === event.id);
+      if (!appt) return;
+
+      const res = await fetch(`http://localhost:3000/api/appointments/${event.id}`, {
+        method: 'PUT',
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({
+          client_id: appt.client_id,
+          date: event.startStr.split("T")[0],
+          startTime: event.startStr.split("T")[1].substring(0, 5),
+          endTime: event.endStr ? event.endStr.split("T")[1].substring(0, 5) : appt.endTime,
+          status: appt.status,
+          value: appt.value,
+          deposit: appt.deposit,
+          deposit_date: appt.deposit_date
+        })
+      });
+
+      if (!res.ok) throw new Error("Erro");
       await fetchAppointments();
     } catch (error) {
       console.error('Error updating appointment:', error);
@@ -400,11 +348,27 @@ const Agenda = () => {
   const handleConfirmAppointment = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
+      const token = localStorage.getItem("noxus_token");
+      if (!token) return;
       const appt = appointments.find(a => a.id === id);
       if (!appt) return;
       
-      const clientName = appt.client_name || 'Cliente';
-      await confirmAppointmentAndFinance(id, appt.client_id, appt.value, appt.date, clientName, 'Confirmado', appt.deposit, appt.deposit_date);
+      const res = await fetch(`http://localhost:3000/api/appointments/${id}`, {
+        method: 'PUT',
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({
+          client_id: appt.client_id,
+          date: appt.date,
+          startTime: appt.startTime,
+          endTime: appt.endTime,
+          status: 'Confirmado',
+          value: appt.value,
+          deposit: appt.deposit,
+          deposit_date: appt.deposit_date
+        })
+      });
+      if (!res.ok) throw new Error("Erro");
+
       await fetchAppointments();
       toast.success("Agendamento confirmado com sucesso!");
     } catch (error) {
@@ -418,7 +382,7 @@ const Agenda = () => {
     setSelectedCheckout(appt);
     setCheckoutData({
       status: 'Recebido',
-      value: appt.value || 0,
+      value: Math.max(0, (appt.value || 0) - (appt.deposit || 0)),
       paymentMethod: 'Pix'
     });
     setCheckoutModalOpen(true);
@@ -427,36 +391,26 @@ const Agenda = () => {
   const handleCheckout = async () => {
     if (!selectedCheckout) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const token = localStorage.getItem("noxus_token");
+      if (!token) {
         toast.error("Você precisa estar logado.");
         return;
       }
 
-      const finalStatus = checkoutData.status === 'Recebido' || checkoutData.status === 'Apenas Consulta' ? 'Concluído' : 'Cancelado';
-      const { error: apptError } = await supabase
-        .from('nx_appointments')
-        .update({ status: finalStatus, value: checkoutData.value })
-        .eq('id', selectedCheckout.id);
+      const res = await fetch('http://localhost:3000/api/appointments/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          appointmentId: selectedCheckout.id,
+          status: checkoutData.status,
+          value: checkoutData.value,
+          paymentMethod: checkoutData.paymentMethod,
+          name: selectedCheckout.client_name,
+          date: selectedCheckout.date
+        })
+      });
 
-      if (apptError) throw apptError;
-
-      if (checkoutData.status === 'Recebido' && checkoutData.value > 0) {
-        const clientName = selectedCheckout.client_name || 'Cliente';
-        const { error: finError } = await supabase
-          .from('nx_financial_transactions')
-          .insert({
-            description: `Sessão - ${clientName} (${checkoutData.paymentMethod})`,
-            value: checkoutData.value,
-            type: 'entrada',
-            status: 'Pago',
-            date: selectedCheckout.date,
-            appointment_id: selectedCheckout.id,
-            user_id: user.id
-          });
-        
-        if (finError) throw finError;
-      }
+      if (!res.ok) throw new Error("Erro");
 
       toast.success("Sessão baixada com sucesso!");
       setCheckoutModalOpen(false);
@@ -844,12 +798,44 @@ const Agenda = () => {
                 />
               </div>
             )}
-            <Button className="w-full mt-2" onClick={handleSave} disabled={loading}>
-              {editingAppointment ? "Atualizar Agendamento" : "Salvar Agendamento"}
-            </Button>
+            
+            <div className="flex items-center gap-2 mt-2">
+              {editingAppointment && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => setDeleteAlertOpen(true)}
+                  disabled={loading}
+                  title="Excluir Agendamento"
+                >
+                  <Trash2 className="h-5 w-5" />
+                </Button>
+              )}
+              <Button className="w-full h-10" onClick={handleSave} disabled={loading}>
+                {editingAppointment ? "Atualizar Agendamento" : "Salvar Agendamento"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={deleteAlertOpen} onOpenChange={setDeleteAlertOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Tem certeza que deseja excluir?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. Isso removerá o agendamento e todos os dados financeiros associados (como sinais pagos).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Checkout Modal */}
       <Dialog open={checkoutModalOpen} onOpenChange={setCheckoutModalOpen}>

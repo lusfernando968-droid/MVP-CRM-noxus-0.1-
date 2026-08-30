@@ -18,9 +18,20 @@ const Auth = () => {
 
     useEffect(() => {
         const checkExistingSession = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            // Evitamos redirecionar se o modal PIX precisa aparecer pra quem acabou de se registrar
-            if (session && !showPixModal) {
+            const token = localStorage.getItem("noxus_token");
+            const userStr = localStorage.getItem("noxus_user");
+            if (token && !showPixModal) {
+                if (userStr) {
+                    try {
+                        const user = JSON.parse(userStr);
+                        if (user.role === 'MASTER' || user.role === 'SUPERADMIN') {
+                            navigate("/admin-dashboard", { replace: true });
+                            return;
+                        }
+                    } catch (e) {
+                        console.error("Error parsing user from local storage", e);
+                    }
+                }
                 navigate("/dashboard", { replace: true });
             }
         };
@@ -28,38 +39,39 @@ const Auth = () => {
     }, [navigate, showPixModal]);
 
     // Login states
-    const [loginEmail, setLoginEmail] = useState("");
-    const [loginPassword, setLoginPassword] = useState("");
-
-    // Register states
-    const [regName, setRegName] = useState("");
-    const [regEmail, setRegEmail] = useState("");
-    const [regWhatsapp, setRegWhatsapp] = useState("");
-    const [regPassword, setRegPassword] = useState("");
-    const [regAccessCode, setRegAccessCode] = useState("");
+    const [loginAccessCode, setLoginAccessCode] = useState("");
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         
-        if (!isSupabaseConfigured) {
-            toast({ variant: "destructive", title: "Erro Crítico", description: "O Banco de Dados não está conectado." });
-            return;
-        }
-
         setLoading(true);
         try {
-            const { error } = await supabase.auth.signInWithPassword({
-                email: loginEmail,
-                password: loginPassword,
+            const res = await fetch("http://localhost:3000/api/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ accessCode: loginAccessCode })
             });
 
-            if (error) throw error;
+            const data = await res.json();
+            
+            if (!res.ok) {
+                throw new Error(data.error || "Erro ao fazer login");
+            }
+
+            // Salva o token JWT localmente
+            localStorage.setItem("noxus_token", data.token);
+            localStorage.setItem("noxus_user", JSON.stringify(data.user));
 
             toast({
                 title: "Bem-vindo de volta!",
                 description: "Login realizado com sucesso.",
             });
-            navigate("/dashboard");
+            
+            if (data.user?.role === 'MASTER' || data.user?.role === 'SUPERADMIN') {
+                navigate("/admin-dashboard");
+            } else {
+                navigate("/dashboard");
+            }
         } catch (error: any) {
             toast({
                 variant: "destructive",
@@ -71,79 +83,7 @@ const Auth = () => {
         }
     };
 
-    const handleRegister = async (e: React.FormEvent) => {
-        e.preventDefault();
-        
-        if (!isSupabaseConfigured) {
-            toast({ variant: "destructive", title: "Erro Crítico", description: "O Banco de Dados não está conectado." });
-            return;
-        }
 
-        if (!regAccessCode) {
-            toast({ variant: "destructive", title: "Acesso Negado", description: "Um Código de Acesso é obrigatório." });
-            return;
-        }
-
-        setLoading(true);
-        try {
-            // Verifica o código ANTES de criar a conta
-            const { data: codeData, error: codeError } = await supabase
-                .from('nx_access_codes')
-                .select('*')
-                .eq('code', regAccessCode)
-                .eq('status', 'available')
-                .single();
-
-            if (codeError || !codeData) {
-                throw new Error("Código de Acesso inválido ou já utilizado.");
-            }
-
-            const { data, error } = await supabase.auth.signUp({
-                email: regEmail,
-                password: regPassword,
-                options: {
-                    data: {
-                        full_name: regName,
-                        whatsapp: regWhatsapp,
-                    }
-                }
-            });
-
-            if (error) throw error;
-
-            if (data.user) {
-                // Marca o código como usado
-                await supabase
-                    .from('nx_access_codes')
-                    .update({ status: 'used', used_by: data.user.id })
-                    .eq('id', codeData.id);
-                
-                // Cria a assinatura de 30 dias
-                const expiry = new Date();
-                expiry.setDate(expiry.getDate() + 30);
-                await supabase
-                    .from('nx_subscriptions')
-                    .insert({ user_id: data.user.id, expires_at: expiry.toISOString() });
-            }
-
-            toast({
-                title: "Conta criada com sucesso!",
-                description: "Seja bem-vindo(a) ao Noxus.",
-            });
-
-            if (data.session || data.user) {
-                setShowPixModal(true);
-            }
-        } catch (error: any) {
-            toast({
-                variant: "destructive",
-                title: "Erro no cadastro",
-                description: error.message || "Tente novamente mais tarde.",
-            });
-        } finally {
-            setLoading(false);
-        }
-    };
 
     const closePixModalAndRedirect = () => {
         setShowPixModal(false);
@@ -154,33 +94,50 @@ const Auth = () => {
         <div className="min-h-screen w-full bg-surface flex items-center justify-center p-4 relative overflow-hidden">
             {/* Modal de Finalização do PIX */}
             <Dialog open={showPixModal} onOpenChange={setShowPixModal}>
-                <DialogContent className="sm:max-w-md bg-card/60 backdrop-blur-2xl border-white/10 shadow-2xl">
-                    <DialogHeader>
-                        <DialogTitle className="text-2xl font-bold flex items-center gap-2">
-                            🎉 Quase lá!
-                        </DialogTitle>
-                        <DialogDescription className="text-base pt-2">
-                            Sua conta foi criada, mas o acesso completo ao Noxus Gestão é restrito. <br /><br />
-                            O pagamento é realizado via <strong>PIX</strong> diretamente com nossa equipe. Para liberar sua conta de Tatuador agora mesmo, nos chame no WhatsApp e envie o comprovante!
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter className="flex-col sm:justify-start gap-2 mt-4">
-                        <Button
-                            className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white flex items-center gap-2 h-12 rounded-xl text-md font-bold"
-                            onClick={() => window.open('https://api.whatsapp.com/send?phone=YOUR_PHONE_NUMBER&text=Ol%C3%A1!%20Acabei%20de%20me%20cadastrar%20no%20Noxus%20Gest%C3%A3o%20e%20gostaria%20de%20fazer%20o%20pagamento%20para%20ativar%20minha%20conta.', '_blank')}
-                        >
-                            <MessageCircle className="h-5 w-5" />
-                            Falar no WhatsApp
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            className="w-full"
-                            onClick={closePixModalAndRedirect}
-                        >
-                            Entendi, fecharei por agora
-                        </Button>
-                    </DialogFooter>
+                <DialogContent className="sm:max-w-md bg-[#0a192f] border border-blue-900/50 shadow-2xl p-0 overflow-hidden">
+                    <div className="bg-gradient-to-br from-primary/20 via-primary/5 to-transparent p-6 pb-8 border-b border-white/5">
+                        <DialogHeader>
+                            <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center mb-4 border border-primary/30 shadow-lg shadow-primary/10">
+                                <Lock className="w-6 h-6 text-primary" />
+                            </div>
+                            <DialogTitle className="text-2xl font-bold text-white tracking-tight">
+                                Conta Criada com Sucesso!
+                            </DialogTitle>
+                            <DialogDescription className="text-gray-300 text-sm mt-2 leading-relaxed">
+                                Você já faz parte do sistema Noxus. Para garantir segurança e exclusividade, a liberação total da sua conta é feita manualmente.
+                            </DialogDescription>
+                        </DialogHeader>
+                    </div>
+                    
+                    <div className="p-6 space-y-6">
+                        <div className="bg-black/20 p-4 rounded-xl border border-white/5">
+                            <h3 className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                Como ativar minha conta?
+                            </h3>
+                            <p className="text-xs text-gray-400 leading-relaxed">
+                                Trabalhamos com assinaturas via <strong>PIX</strong> direto com nosso time de atendimento. Basta nos chamar no WhatsApp, enviar o comprovante de ativação e sua conta é liberada na hora.
+                            </p>
+                        </div>
+
+                        <DialogFooter className="flex-col gap-3">
+                            <Button
+                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-2 h-12 rounded-xl text-sm font-bold transition-all shadow-lg shadow-emerald-900/20"
+                                onClick={() => window.open('https://api.whatsapp.com/send?phone=YOUR_PHONE_NUMBER&text=Ol%C3%A1!%20Acabei%20de%20me%20cadastrar%20no%20Noxus%20Gest%C3%A3o%20e%20gostaria%20de%20fazer%20o%20pagamento%20para%20ativar%20minha%20conta.', '_blank')}
+                            >
+                                <MessageCircle className="h-5 w-5" />
+                                Chamar no WhatsApp para Liberar
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                className="w-full h-12 rounded-xl text-gray-400 hover:text-white hover:bg-white/5"
+                                onClick={closePixModalAndRedirect}
+                            >
+                                Acessar com restrições por enquanto
+                            </Button>
+                        </DialogFooter>
+                    </div>
                 </DialogContent>
             </Dialog>
 
@@ -196,13 +153,8 @@ const Auth = () => {
                     <p className="text-muted-foreground mt-2">Gestão inteligente para artistas</p>
                 </div>
 
-                <Tabs defaultValue="login" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 mb-6 p-1 bg-muted/50 rounded-xl">
-                        <TabsTrigger value="login" className="rounded-lg py-2.5">Login</TabsTrigger>
-                        <TabsTrigger value="register" className="rounded-lg py-2.5">Cadastro</TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent value="login" className="animate-in slide-in-from-left-4 duration-300">
+                <div className="w-full">
+                    <div className="animate-in slide-in-from-left-4 duration-300">
                         <Card className="border-border/50 bg-card/50 backdrop-blur-xl rounded-2xl overflow-hidden shadow-xl border">
                             <CardHeader className="space-y-1">
                                 <CardTitle className="text-2xl font-bold">Bem-vindo de volta</CardTitle>
@@ -211,36 +163,20 @@ const Auth = () => {
                             <form onSubmit={handleLogin}>
                                 <CardContent className="space-y-4 pt-2">
                                     <div className="space-y-2">
-                                        <Label htmlFor="email" className="text-sm font-medium">E-mail</Label>
+                                        <Label htmlFor="accessCode" className="text-sm font-medium">Chave de Acesso</Label>
                                         <div className="relative group">
-                                            <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                                            <Key className="absolute left-3 top-3 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
                                             <Input
-                                                id="email"
-                                                type="email"
-                                                placeholder="seu@email.com"
-                                                value={loginEmail}
-                                                onChange={(e) => setLoginEmail(e.target.value)}
-                                                className="pl-10 bg-background/50 border-border/50 focus:border-primary/50 transition-all rounded-xl py-6"
+                                                id="accessCode"
+                                                type="text"
+                                                placeholder="NOXUS-XXXX"
+                                                value={loginAccessCode}
+                                                onChange={(e) => setLoginAccessCode(e.target.value)}
+                                                className="pl-10 bg-background/50 border-border/50 focus:border-primary/50 transition-all rounded-xl py-6 uppercase font-mono tracking-wider"
                                                 required
                                             />
                                         </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <Label htmlFor="password">Senha</Label>
-                                            <button type="button" className="text-xs text-primary hover:underline font-medium">Esqueceu a senha?</button>
-                                        </div>
-                                        <div className="relative group">
-                                            <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
-                                            <Input
-                                                id="password"
-                                                type="password"
-                                                value={loginPassword}
-                                                onChange={(e) => setLoginPassword(e.target.value)}
-                                                className="pl-10 bg-background/50 border-border/50 focus:border-primary/50 transition-all rounded-xl py-6"
-                                                required
-                                            />
-                                        </div>
+                                        <p className="text-xs text-muted-foreground">Insira a chave fornecida pela administração.</p>
                                     </div>
                                 </CardContent>
                                 <CardFooter className="flex flex-col pt-4">
@@ -259,126 +195,10 @@ const Auth = () => {
                                 </CardFooter>
                             </form>
                         </Card>
-                    </TabsContent>
-
-                    <TabsContent value="register" className="animate-in slide-in-from-right-4 duration-300">
-                        <Card className="border-border/50 bg-card/50 backdrop-blur-xl rounded-2xl overflow-hidden shadow-xl border">
-                            <CardHeader className="space-y-1">
-                                <CardTitle className="text-2xl font-bold">Criar conta</CardTitle>
-                                <CardDescription>Junte-se ao Noxus e organize seu trabalho</CardDescription>
-                            </CardHeader>
-                            <form onSubmit={handleRegister}>
-                                <CardContent className="space-y-4 pt-2">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="name">Nome Completo</Label>
-                                        <div className="relative group">
-                                            <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
-                                            <Input
-                                                id="name"
-                                                placeholder="Como devemos te chamar?"
-                                                value={regName}
-                                                onChange={(e) => setRegName(e.target.value)}
-                                                className="pl-10 bg-background/50 border-border/50 focus:border-primary/50 transition-all rounded-xl py-6"
-                                                required
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="reg-email">E-mail Profissional</Label>
-                                        <div className="relative group">
-                                            <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
-                                            <Input
-                                                id="reg-email"
-                                                type="email"
-                                                placeholder="contato@estudio.com"
-                                                value={regEmail}
-                                                onChange={(e) => setRegEmail(e.target.value)}
-                                                className="pl-10 bg-background/50 border-border/50 focus:border-primary/50 transition-all rounded-xl py-6"
-                                                required
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="reg-whatsapp">WhatsApp</Label>
-                                        <div className="relative group">
-                                            <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
-                                            <Input
-                                                id="reg-whatsapp"
-                                                type="tel"
-                                                placeholder="(11) 99999-9999"
-                                                value={regWhatsapp}
-                                                onChange={(e) => setRegWhatsapp(e.target.value)}
-                                                className="pl-10 bg-background/50 border-border/50 focus:border-primary/50 transition-all rounded-xl py-6"
-                                                required
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="reg-password">Senha segura</Label>
-                                        <div className="relative group">
-                                            <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
-                                            <Input
-                                                id="reg-password"
-                                                type="password"
-                                                value={regPassword}
-                                                onChange={(e) => setRegPassword(e.target.value)}
-                                                className="pl-10 bg-background/50 border-border/50 focus:border-primary/50 transition-all rounded-xl py-6"
-                                                required
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="reg-access-code" className="text-primary font-bold">Código de Acesso VIP</Label>
-                                        <div className="relative group">
-                                            <Key className="absolute left-3 top-3 h-4 w-4 text-primary transition-colors group-focus-within:text-primary" />
-                                            <Input
-                                                id="reg-access-code"
-                                                type="text"
-                                                placeholder="NOXUS-XXXX"
-                                                value={regAccessCode}
-                                                onChange={(e) => setRegAccessCode(e.target.value)}
-                                                className="pl-10 bg-primary/5 border-primary/30 focus:border-primary transition-all rounded-xl py-6 uppercase font-mono tracking-wider"
-                                                required
-                                            />
-                                        </div>
-                                        <p className="text-xs text-muted-foreground">Fornecido pelo administrador do sistema.</p>
-                                    </div>
-                                </CardContent>
-                                <CardFooter className="flex flex-col pt-4">
-                                    <Button className="w-full h-12 rounded-xl text-md font-semibold shadow-lg shadow-primary/20 relative overflow-hidden group" disabled={loading}>
-                                        {loading ? (
-                                            <span className="flex items-center gap-2">
-                                                <div className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin rounded-full" />
-                                                Criando...
-                                            </span>
-                                        ) : (
-                                            <span className="flex items-center gap-2">
-                                                Começar agora <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                                            </span>
-                                        )}
-                                    </Button>
-                                </CardFooter>
-                            </form>
-                        </Card>
-                    </TabsContent>
-                </Tabs>
-
-                {/* Botão de Modo Demo */}
-                <div className="mt-6 border-t border-border/30 pt-6">
-                    <button
-                        onClick={() => {
-                            localStorage.setItem("noxus_demo_mode", "true");
-                            navigate("/dashboard");
-                        }}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-dashed border-amber-500/50 bg-amber-500/5 text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/80 transition-all duration-200 text-sm font-medium group"
-                    >
-                        <FlaskConical className="h-4 w-4 group-hover:rotate-12 transition-transform" />
-                        Entrar no Modo Demo (sem login)
-                    </button>
-                    <p className="text-center text-xs text-muted-foreground mt-2">
-                        Apenas para testes locais. Dados não são salvos na nuvem.
-                    </p>
+                    </div>
                 </div>
+
+
 
                 <p className="text-center text-xs text-muted-foreground mt-6 px-8 leading-relaxed">
                     Ao continuar, você concorda com nossos <button className="underline hover:text-primary transition-colors">Termos de Serviço</button> e <button className="underline hover:text-primary transition-colors">Política de Privacidade</button>.

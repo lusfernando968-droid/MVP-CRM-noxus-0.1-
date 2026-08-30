@@ -149,7 +149,7 @@
   }
 
   .stat-card {
-    @apply bg-card rounded-xl border p-4 lg:p-6 shadow-sm transition-all duration-200 hover:shadow-md;
+    @apply bg-card rounded-xl border p-3 md:p-4 lg:p-6 shadow-sm transition-all duration-200 hover:shadow-md;
   }
 
   .page-container {

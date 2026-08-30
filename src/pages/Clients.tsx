@@ -70,12 +70,14 @@ const Clients = () => {
   const fetchClients = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('nx_clients')
-        .select('*, referrer:referred_by_id(name)')
-        .order('name');
+      const token = localStorage.getItem("noxus_token");
+      if (!token) return;
 
-      if (error) throw error;
+      const res = await fetch("http://localhost:3000/api/clients", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Erro ao buscar clientes");
+      const data = await res.json();
 
       const formatted = data.map((c: any) => ({
         id: c.id,
@@ -94,7 +96,7 @@ const Clients = () => {
 
       // Update selected client if it was already selected
       if (selectedClient) {
-        const updated = formatted.find(c => c.id === selectedClient.id);
+        const updated = formatted.find((c: any) => c.id === selectedClient.id);
         if (updated) setSelectedClient(updated);
       }
     } catch (error) {
@@ -105,18 +107,6 @@ const Clients = () => {
   };
 
   useEffect(() => {
-    const checkUser = async () => {
-      // Modo demo: pula verificação de sessão
-      const isDemoMode = localStorage.getItem("noxus_demo_mode") === "true";
-      if (isDemoMode) return;
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        navigate("/auth");
-      }
-    };
-
-    checkUser();
     fetchClients();
   }, []);
 
@@ -141,17 +131,30 @@ const Clients = () => {
   const fetchClientAnamnesis = async (clientId: string) => {
     try {
       setLoadingAnamnesis(true);
-      const { data, error } = await supabase
-        .from('nx_anamnesis')
-        .select('*')
-        .eq('client_id', clientId)
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        throw error;
+      const res = await fetch(`http://localhost:3000/api/anamnesis/${clientId}`);
+      const data = await res.json();
+      
+      if (res.ok && data.anamnesis) {
+        const answers = data.anamnesis.answers;
+        setClientAnamnesis({
+          medical_history: {
+            diabetes: answers.diabetes,
+            hepatitis: answers.hepatitis,
+            pregnancy: answers.pregnancy,
+            bleeding_disorders: answers.bleeding_disorders,
+            keloids: answers.keloids,
+          },
+          birth_date: answers.birth_date,
+          discovery_source: answers.discovery_source,
+          allergies: answers.allergies,
+          medications: answers.medications,
+          emergency_contact: answers.emergency_contact,
+          has_contract_signed: true,
+          signed_at: data.anamnesis.createdAt
+        });
+      } else {
+        setClientAnamnesis(null);
       }
-
-      setClientAnamnesis(data || null);
     } catch (error) {
       console.error('Error fetching anamnesis:', error);
     } finally {
@@ -162,13 +165,12 @@ const Clients = () => {
   const fetchClientSessions = async (clientId: string) => {
     try {
       setLoadingSessions(true);
-      const { data, error } = await supabase
-        .from('nx_appointments')
-        .select('*')
-        .eq('client_id', clientId)
-        .order('date', { ascending: false });
-
-      if (error) throw error;
+      const token = localStorage.getItem("noxus_token");
+      const res = await fetch(`http://localhost:3000/api/appointments/client/${clientId}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Erro");
+      const data = await res.json();
       setClientSessions(data || []);
     } catch (error) {
       console.error('Error fetching client sessions:', error);
@@ -180,13 +182,12 @@ const Clients = () => {
   const fetchReferredClients = async (clientId: string) => {
     try {
       setLoadingReferrals(true);
-      const { data, error } = await supabase
-        .from('nx_clients')
-        .select('id, name, created_at')
-        .eq('referred_by_id', clientId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      const token = localStorage.getItem("noxus_token");
+      const res = await fetch(`http://localhost:3000/api/clients/${clientId}/referrals`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Erro");
+      const data = await res.json();
       setReferredClients(data || []);
     } catch (error) {
       console.error('Error fetching referred clients:', error);
@@ -197,7 +198,7 @@ const Clients = () => {
 
   const handleCopyAnamnesisLink = async () => {
     if (!selectedClient) return;
-    const url = `${window.location.origin} /anamnese/${selectedClient.id} `;
+    const url = `${window.location.origin}/anamnese/${selectedClient.id}`;
 
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -241,8 +242,8 @@ const Clients = () => {
       alert("O cliente não possui um telefone cadastrado.");
       return;
     }
-    const url = `${window.location.origin} /anamnese/${selectedClient.id} `;
-    const text = `Olá ${selectedClient.name} !Aqui está o link para você preencher sua ficha de anamnese e assinar as autorizações do estúdio antes da sua sessão: ${url} `;
+    const url = `${window.location.origin}/anamnese/${selectedClient.id}`;
+    const text = `Olá ${selectedClient.name}! Aqui está o link para você preencher sua ficha de anamnese e assinar as autorizações do estúdio antes da sua sessão: ${url}`;
     const phoneValid = selectedClient.phone.replace(/\D/g, '');
     window.open(`https://wa.me/55${phoneValid}?text=${encodeURIComponent(text)}`, '_blank');
   };
@@ -325,25 +326,32 @@ const Clients = () => {
         return;
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const token = localStorage.getItem("noxus_token");
+      if (!token) {
         alert("Sessão expirada. Faça login novamente.");
         return;
       }
 
-      const { error } = await supabase
-        .from('nx_clients')
-        .insert({
+      const res = await fetch("http://localhost:3000/api/clients", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
           name: newClientData.name,
           phone: newClientData.phone,
           instagram: newClientData.instagram,
           age: parseInt(newClientData.age) || 0,
-          user_id: user.id,
           avatar_url: newClientData.avatar_url,
           referred_by_id: newClientData.referred_by_id === "none" ? null : (newClientData.referred_by_id || null)
-        });
+        })
+      });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Erro ao criar cliente");
+      }
 
       await fetchClients();
       setIsAddingClient(false);
@@ -690,6 +698,32 @@ const Clients = () => {
                           <span className="text-sm font-medium text-muted-foreground">Nenhuma condição reportada.</span>
                         )}
                       </div>
+
+                      {/* Care Tips / Recommendations */}
+                      {Object.values(clientAnamnesis.medical_history || {}).some(v => v) && (
+                        <div className="mt-4 bg-warning/10 border border-warning/20 rounded-xl p-4">
+                          <h4 className="text-sm font-bold text-warning flex items-center gap-2 mb-2">
+                            <AlertCircle className="h-4 w-4" /> Recomendações e Cuidados
+                          </h4>
+                          <ul className="list-disc list-inside text-sm text-foreground/80 space-y-1">
+                            {clientAnamnesis.medical_history?.diabetes && (
+                              <li><strong>Diabetes:</strong> Cicatrização pode ser mais lenta. Recomende cuidados redobrados com a assepsia na cicatrização.</li>
+                            )}
+                            {clientAnamnesis.medical_history?.keloids && (
+                              <li><strong>Queloide:</strong> Alto risco de cicatrização hipertrófica. Evite agredir muito a pele e discuta os riscos com o cliente.</li>
+                            )}
+                            {clientAnamnesis.medical_history?.pregnancy && (
+                              <li><strong>Gestante/Lactante:</strong> Necessário liberação médica por escrito para tatuar. Risco de infecções sistêmicas.</li>
+                            )}
+                            {clientAnamnesis.medical_history?.bleeding_disorders && (
+                              <li><strong>Prob. Coagulação:</strong> O cliente pode sangrar mais que o normal, dificultando a pigmentação. Esteja preparado.</li>
+                            )}
+                            {clientAnamnesis.medical_history?.hepatitis && (
+                              <li><strong>Hepatite:</strong> Atenção máxima aos protocolos de biossegurança e descarte de materiais perfurocortantes.</li>
+                            )}
+                          </ul>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">

@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String?
+  whatsapp  String?
+  role      String   @default("USER") // USER ou ADMIN
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  clients        Client[]
+  appointments   Appointment[]
+  subscriptions  Subscription[]
+  accessCodesUsed AccessCode[] @relation("UsedBy")
+  transactions   FinancialTransaction[]
+  supportMessages SupportMessage[]
+}
+
+model Client {
+  id        String   @id @default(uuid())
+  name      String
+  email     String?
+  phone     String?
+  instagram String?
+  age       Int?
+  avatar_url String?
+  referred_by_id String?
+  createdAt DateTime @default(now())
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  
+  appointments Appointment[]
+  anamnesis    Anamnesis[]
+}
+
+model Appointment {
+  id        String   @id @default(uuid())
+  date      String
+  startTime String
+  endTime   String
+  status    String   @default("Agendado")
+  type      String?
+  value     Float?   @default(0)
+  deposit   Float?   @default(0)
+  depositDate String?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id])
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+
+  transactions FinancialTransaction[]
+}
+
+model AccessCode {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  status    String   @default("available") // available, used
+  createdAt DateTime @default(now())
+
+  // Detalhes da Venda
+  clientName    String?
+  clientPhone   String?
+  clientEmail   String?
+  subscriptionValue Float?
+  paymentMethod String?
+
+  usedById  String?
+  usedBy    User?    @relation("UsedBy", fields: [usedById], references: [id])
+}
+
+model Subscription {
+  id        String   @id @default(uuid())
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Anamnesis {
+  id        String   @id @default(uuid())
+  discoverySource String?
+  answers   String // Guardar como JSON string para simplificar no SQLite
+  createdAt DateTime @default(now())
+
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id])
+}
+
+model FinancialTransaction {
+  id          String   @id @default(uuid())
+  type        String   // "entrada" ou "saida"
+  value       Float
+  description String
+  status      String   @default("Pago")
+  date        String
+  createdAt   DateTime @default(now())
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+}
+
+model SupportMessage {
+  id              String   @id @default(uuid())
+  message         String
+  is_from_support Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+}

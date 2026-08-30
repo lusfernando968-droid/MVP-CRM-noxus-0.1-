@@ -15,11 +15,11 @@ import Users from "./pages/Users";
 import NotFound from "./pages/NotFound";
 import AnamnesisForm from "./pages/AnamnesisForm";
 import SuperAdmin from "./pages/SuperAdmin";
+import AdminDashboard from "./pages/AdminDashboard";
 import Inactive from "./pages/Inactive";
-import Landing from "./pages/Landing";
 import { DevDashboard } from "./pages/DevDashboard";
 import { Layout } from "@/components/Layout";
-import { Outlet } from "react-router-dom";
+import { Outlet, Navigate } from "react-router-dom";
 
 import MasterAdmin from "./pages/MasterAdmin";
 
@@ -42,7 +42,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Landing />} />
+            <Route path="/" element={<Navigate to="/auth" replace />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/inativo" element={<Inactive />} />
             <Route path="/anamnese/:clientId" element={<AnamnesisForm />} />
@@ -59,6 +59,7 @@ const App = () => (
               <Route path="/dev-dashboard" element={<DevDashboard />} />
               <Route path="/usuarios" element={<Users />} />
               <Route path="/admin-noxus" element={<SuperAdmin />} />
+              <Route path="/admin-dashboard" element={<AdminDashboard />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

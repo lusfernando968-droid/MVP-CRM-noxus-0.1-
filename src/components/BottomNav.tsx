@@ -1,16 +1,76 @@
+import { useState, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { LayoutDashboard, Calendar, Users, DollarSign } from "lucide-react";
+import { LayoutDashboard, Calendar, Users, DollarSign, Shield, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const navItems = [
-  { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-  { title: "Agenda", path: "/agenda", icon: Calendar },
-  { title: "Clientes", path: "/clientes", icon: Users },
-  { title: "Financeiro", path: "/financeiro", icon: DollarSign },
-];
 
 export function BottomNav() {
   const location = useLocation();
+  const [role, setRole] = useState<string | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+
+  useEffect(() => {
+    // Primeiro tenta pegar do localStorage pra ser rápido
+    const userStr = localStorage.getItem("noxus_user");
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        setRole(user.role);
+        if (user.role === 'SUPERADMIN' || user.role === 'MASTER') {
+          setIsSuperAdmin(true);
+        }
+      } catch (e) {}
+    }
+
+    // Depois confirma com o backend
+    const fetchUser = async () => {
+      try {
+        const token = localStorage.getItem("noxus_token");
+        if (!token) return;
+
+        const res = await fetch("http://localhost:3000/api/me", {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        
+        if (res.ok) {
+          const { user } = await res.json();
+          setRole(user.role);
+          if (user.role === 'SUPERADMIN' || user.role === 'MASTER') {
+            setIsSuperAdmin(true);
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao carregar usuário:", error);
+      }
+    };
+    fetchUser();
+  }, []);
+
+  const isDemoMode = localStorage.getItem("noxus_demo_mode") === "true";
+  const demoRole = localStorage.getItem("noxus_demo_role");
+
+  let navItems = [];
+
+  if (isSuperAdmin || (isDemoMode && demoRole === "admin")) {
+    navItems = [
+      { title: "Painel Adm", path: "/admin-dashboard", icon: LayoutDashboard },
+      { title: "Clientes", path: "/admin-noxus", icon: Shield },
+      { title: "Usuários", path: "/usuarios", icon: Users },
+      { title: "Suporte", path: "/suporte-admin", icon: MessageSquare },
+    ];
+  } else if (role === 'ADMIN') {
+    navItems = [
+      { title: "Usuários", path: "/usuarios", icon: Users },
+      { title: "Suporte", path: "/suporte-admin", icon: MessageSquare },
+      { title: "Vendas", path: "/dev-dashboard", icon: DollarSign },
+    ];
+  } else {
+    navItems = [
+      { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+      { title: "Agenda", path: "/agenda", icon: Calendar },
+      { title: "Clientes", path: "/clientes", icon: Users },
+      { title: "Financeiro", path: "/financeiro", icon: DollarSign },
+    ];
+  }
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-sidebar border-t border-sidebar-border safe-area-bottom">
@@ -38,7 +98,7 @@ export function BottomNav() {
                   isActive && "scale-110"
                 )}
               />
-              <span className={cn(isActive && "font-semibold")}>{item.title}</span>
+              <span className={cn(isActive && "font-semibold whitespace-nowrap")}>{item.title}</span>
             </NavLink>
           );
         })}

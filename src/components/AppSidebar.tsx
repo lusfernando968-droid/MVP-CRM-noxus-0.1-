@@ -42,44 +42,20 @@ export function AppSidebar() {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        console.log("Buscando sessão inicial...");
-        const { data: { session } } = await supabase.auth.getSession();
-        const currentUser = session?.user;
+        const token = localStorage.getItem("noxus_token");
+        if (!token) return;
 
-        if (currentUser) {
-          console.log("Usuário logado:", currentUser.email);
-          setUser({
-            email: currentUser.email,
-            name: currentUser.user_metadata?.full_name || "Usuário",
-          });
-
-          // Buscar perfil de forma assíncrona sem travar a UI básica
-          supabase
-            .from('users')
-            .select('nome, role')
-            .eq('id', currentUser.id)
-            .single()
-            .then(({ data: profile, error: profileError }) => {
-              if (profile && !profileError) {
-                console.log("Perfil carregado com sucesso");
-                setUser(prev => ({
-                  ...prev,
-                  name: profile.nome || prev?.name || "Usuário"
-                }));
-                setRole(profile.role);
-              }
-            });
-
-          supabase
-            .from('nx_admin_users')
-            .select('*')
-            .eq('user_id', currentUser.id)
-            .single()
-            .then(({ data: adminData }) => {
-              if (adminData) setIsSuperAdmin(true);
-            });
-        } else {
-          console.log("Nenhuma sessão encontrada no carregamento inicial");
+        const res = await fetch("http://localhost:3000/api/me", {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        
+        if (res.ok) {
+          const { user } = await res.json();
+          setUser({ email: user.email, name: user.name });
+          setRole(user.role);
+          if (user.role === 'SUPERADMIN' || user.role === 'MASTER') {
+            setIsSuperAdmin(true);
+          }
         }
       } catch (error) {
         console.error("Erro ao carregar usuário:", error);
@@ -87,58 +63,39 @@ export function AppSidebar() {
     };
 
     fetchUser();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        setUser({
-          email: session.user.email,
-          name: session.user.user_metadata?.full_name || "Usuário",
-        });
-
-        const { data: profile } = await supabase
-          .from('users')
-          .select('nome, role')
-          .eq('id', session.user.id)
-          .single();
-
-        if (profile) {
-          setUser({
-            email: session.user.email,
-            name: profile.nome || session.user.user_metadata?.full_name || "Usuário",
-          });
-          setRole(profile.role);
-        }
-
-        const { data: adminData } = await supabase
-          .from('nx_admin_users')
-          .select('*')
-          .eq('user_id', session.user.id)
-          .single();
-        if (adminData) setIsSuperAdmin(true);
-        else setIsSuperAdmin(false);
-      } else {
-        setUser(null);
-        setRole(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
   }, []);
 
-  const navItems = role === 'ADMIN'
-    ? [
-      { title: "Usuários", path: "/usuarios", icon: Users },
-      { title: "Suporte Interno", path: "/suporte-admin", icon: MessageSquare },
-      { title: "Vendas Noxus", path: "/dev-dashboard", icon: DollarSign },
-      ...(isSuperAdmin ? [{ title: "Super Admin", path: "/admin-noxus", icon: Shield }] : [])
-    ]
-    : [
+  const isDemoMode = localStorage.getItem("noxus_demo_mode") === "true";
+  const demoRole = localStorage.getItem("noxus_demo_role");
+  
+  let navItems = [];
+
+  if (isSuperAdmin || (isDemoMode && demoRole === "admin")) {
+    navItems = [
       { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
       { title: "Agenda", path: "/agenda", icon: Calendar },
       { title: "Clientes", path: "/clientes", icon: Users },
       { title: "Financeiro", path: "/financeiro", icon: DollarSign },
-      ...(isSuperAdmin ? [{ title: "Super Admin", path: "/admin-noxus", icon: Shield }] : [])
+      { title: "Dashboard Adm", path: "/admin-dashboard", icon: LayoutDashboard },
+      { title: "Gestão Clientes", path: "/admin-noxus", icon: Shield },
+      { title: "Usuários", path: "/usuarios", icon: Users },
+      { title: "Suporte Interno", path: "/suporte-admin", icon: MessageSquare },
+      { title: "Vendas Noxus", path: "/dev-dashboard", icon: DollarSign },
     ];
+  } else if (role === 'ADMIN') {
+    navItems = [
+      { title: "Usuários", path: "/usuarios", icon: Users },
+      { title: "Suporte Interno", path: "/suporte-admin", icon: MessageSquare },
+      { title: "Vendas Noxus", path: "/dev-dashboard", icon: DollarSign },
+    ];
+  } else {
+    navItems = [
+      { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+      { title: "Agenda", path: "/agenda", icon: Calendar },
+      { title: "Clientes", path: "/clientes", icon: Users },
+      { title: "Financeiro", path: "/financeiro", icon: DollarSign },
+    ];
+  }
 
   const handleLogout = async () => {
     const loadingToast = toast.loading("Saindo...");

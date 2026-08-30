@@ -37,31 +37,21 @@ export default function AnamnesisForm() {
             if (!clientId) return;
 
             try {
-                // First check if an anamnesis already exists
-                const { data: existingData } = await supabase
-                    .from("nx_anamnesis")
-                    .select("id")
-                    .eq("client_id", clientId)
-                    .single();
+                const res = await fetch(`http://localhost:3000/api/anamnesis/${clientId}`);
+                const data = await res.json();
+                
+                if (!res.ok) {
+                    setErrorMsg(data.error || "Cliente não encontrado ou link inválido.");
+                    return;
+                }
 
-                if (existingData) {
+                if (data.hasAnamnesis) {
                     setSuccess(true);
                     setLoading(false);
                     return;
                 }
 
-                // Fetch client basic info to show on the page
-                const { data: client, error } = await supabase
-                    .from("nx_clients")
-                    .select("id, name, user_id")
-                    .eq("id", clientId)
-                    .single();
-
-                if (error || !client) {
-                    setErrorMsg("Cliente não encontrado ou link inválido.");
-                } else {
-                    setClientData(client);
-                }
+                setClientData(data.client);
             } catch (err) {
                 console.error("Error fetching client:", err);
                 setErrorMsg("Erro ao carregar os dados.");
@@ -98,38 +88,19 @@ export default function AnamnesisForm() {
                 age--;
             }
 
-            // 1. Update client age
-            const { error: clientError } = await supabase
-                .from('nx_clients')
-                .update({ age: age })
-                .eq('id', clientData.id);
+            const res = await fetch(`http://localhost:3000/api/anamnesis/${clientId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    formData,
+                    age
+                })
+            });
 
-            if (clientError) throw clientError;
-
-            const medicalHistory = {
-                diabetes: formData.diabetes,
-                hepatitis: formData.hepatitis,
-                pregnancy: formData.pregnancy,
-                bleeding_disorders: formData.bleeding_disorders,
-                keloids: formData.keloids,
-            };
-
-            const { error } = await supabase
-                .from("nx_anamnesis")
-                .insert({
-                    client_id: clientData.id,
-                    user_id: clientData.user_id, // Link to the tatuador
-                    medical_history: medicalHistory,
-                    allergies: formData.allergies,
-                    medications: formData.medications,
-                    emergency_contact: formData.emergency_contact,
-                    discovery_source: formData.discovery_source,
-                    birth_date: formData.birth_date,
-                    has_contract_signed: true,
-                    signed_at: new Date().toISOString()
-                });
-
-            if (error) throw error;
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.error || "Erro ao salvar anamnese");
+            }
 
             setSuccess(true);
         } catch (err: any) {

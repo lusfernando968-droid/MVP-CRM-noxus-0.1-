@@ -43,13 +43,15 @@ const Financial = () => {
   const fetchTransactions = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('nx_financial_transactions')
-        .select('*')
-        .order('date', { ascending: false });
+      const token = localStorage.getItem("noxus_token");
+      if (!token) return;
 
-      if (error) throw error;
-
+      const res = await fetch("http://localhost:3000/api/financial", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Error fetching transactions");
+      
+      const data = await res.json();
       const formatted = data.map((t: any) => ({
         id: t.id,
         description: t.description,
@@ -82,22 +84,22 @@ const Financial = () => {
         return;
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const token = localStorage.getItem("noxus_token");
+      if (!token) {
         toast.error("Você precisa estar logado.");
         return;
       }
 
-      const { error } = await supabase.from('nx_financial_transactions').insert({
-        description: formData.description,
-        value: formData.value,
-        type: formData.type,
-        status: formData.status,
-        date: formData.date,
-        user_id: user.id
+      const res = await fetch("http://localhost:3000/api/financial", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(formData)
       });
 
-      if (error) throw error;
+      if (!res.ok) throw new Error("Error saving");
 
       toast.success("Transação salva com sucesso!");
       setModalOpen(false);

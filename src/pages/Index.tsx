@@ -72,253 +72,25 @@ const Index = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const today = new Date().toISOString().split('T')[0];
-      const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+      const token = localStorage.getItem("noxus_token");
+      if (!token) return;
 
-      // 1. Fetch Sessions Today
-      const { count: sessionsCount } = await supabase
-        .from('nx_appointments')
-        .select('*', { count: 'exact', head: true })
-        .eq('date', today);
-
-      // 2. Fetch Monthly Revenue
-      const { data: revenueData } = await supabase
-        .from('nx_financial_transactions')
-        .select('value')
-        .eq('type', 'entrada')
-        .gte('date', startOfMonth);
-
-      const totalRevenue = revenueData?.reduce((acc, curr) => acc + Number(curr.value), 0) || 0;
-
-      // 3. Fetch Active Clients
-      const { count: clientsCount } = await supabase
-        .from('nx_clients')
-        .select('*', { count: 'exact', head: true });
-
-      // 4. Fetch Average Time
-      const { data: apptsTime } = await supabase
-        .from('nx_appointments')
-        .select('start_time, end_time');
-
-      let avgMinutes = 0;
-      if (apptsTime && apptsTime.length > 0) {
-        const totalMinutes = apptsTime.reduce((acc, curr) => {
-          const [h1, m1] = curr.start_time.split(':').map(Number);
-          const [h2, m2] = curr.end_time.split(':').map(Number);
-          return acc + ((h2 * 60 + m2) - (h1 * 60 + m1));
-        }, 0);
-        avgMinutes = totalMinutes / apptsTime.length;
-      }
-      const h = Math.floor(avgMinutes / 60);
-      const m = Math.round(avgMinutes % 60);
-
-      // 7. Fetch Pending Receivables
-      const { data: pendingData } = await supabase
-        .from('nx_appointments')
-        .select('value, deposit')
-        .in('status', ['Pendente', 'Agendado']);
-
-      const totalPending = pendingData?.reduce((acc, curr) => acc + (Number(curr.value) - Number(curr.deposit)), 0) || 0;
-
-      // 8. Fetch Anamnesis Stats
-      const { data: anamnesisData } = await supabase
-        .from('nx_anamnesis')
-        .select('discovery_source');
-
-      const anamnesisCount = anamnesisData?.length || 0;
-
-      let topSource = "-";
-      if (anamnesisData && anamnesisData.length > 0) {
-        const sourceCounts = anamnesisData.reduce((acc: Record<string, number>, curr) => {
-          if (curr.discovery_source) {
-            acc[curr.discovery_source] = (acc[curr.discovery_source] || 0) + 1;
-          }
-          return acc;
-        }, {});
-
-        topSource = Object.entries(sourceCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
-      }
-
-      setStatsData({
-        sessionsToday: String(sessionsCount || 0),
-        monthlyRevenue: `R$ ${totalRevenue.toLocaleString('pt-BR')}`,
-        activeClients: String(clientsCount || 0),
-        avgTime: `${h}h ${m.toString().padStart(2, '0')}m`,
-        pendingReceivables: `R$ ${totalPending.toLocaleString('pt-BR')}`,
-        anamnesisCompleted: String(anamnesisCount),
-        topDiscoverySource: topSource
-      });
-
-      // 9. Fetch and format Revenue Chart Data (Last 7 Days)
-      const last7Days = new Date();
-      last7Days.setDate(last7Days.getDate() - 6); // Includes today
-      const startOf7Days = last7Days.toISOString().split('T')[0];
-
-      const { data: chartFinancialData } = await supabase
-        .from('nx_financial_transactions')
-        .select('date, value, type')
-        .gte('date', startOf7Days)
-        .order('date');
-
-      // Group by date
-      const aggregatedData: Record<string, { income: number; expense: number }> = {};
-      const datesList = [];
-      for (let i = 0; i < 7; i++) {
-        const d = new Date(last7Days);
-        d.setDate(last7Days.getDate() + i);
-        const dateStr = d.toISOString().split('T')[0];
-        aggregatedData[dateStr] = { income: 0, expense: 0 };
-        datesList.push(dateStr);
-      }
-
-      chartFinancialData?.forEach(tx => {
-        if (aggregatedData[tx.date] !== undefined) {
-          if (tx.type === 'entrada') {
-            aggregatedData[tx.date].income += Number(tx.value);
-          } else {
-            aggregatedData[tx.date].expense += Number(tx.value);
-          }
+      const res = await fetch("http://localhost:3000/api/dashboard", {
+        headers: {
+          "Authorization": `Bearer ${token}`
         }
       });
+      
+      if (!res.ok) throw new Error("Falha ao buscar dados");
+      const data = await res.json();
 
-      const formattedRevenueChart = datesList.map(date => ({
-        date: new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-        income: aggregatedData[date].income,
-        expense: aggregatedData[date].expense,
-        profit: aggregatedData[date].income - aggregatedData[date].expense
-      }));
-      setRevenueChartData(formattedRevenueChart);
-
-      // 10. Fetch Appointments Status for Chart (Current Month)
-      const { data: apptStatusData } = await supabase
-        .from('nx_appointments')
-        .select('status')
-        .gte('date', startOfMonth);
-
-      const statusCounts = {
-        Confirmado: 0,
-        Agendado: 0,
-        Cancelado: 0
-      };
-
-      apptStatusData?.forEach(appt => {
-        if (appt.status === 'Confirmado' || appt.status === 'Concluído') statusCounts.Confirmado++;
-        else if (appt.status === 'Pendente' || appt.status === 'Agendado') statusCounts.Agendado++;
-        else if (appt.status === 'Cancelado') statusCounts.Cancelado++;
-      });
-
-      setAppointmentsStatusData([
-        { name: 'Confirmado/Concluído', value: statusCounts.Confirmado, fill: '#9333ea' }, // Purple
-        { name: 'Agendado', value: statusCounts.Agendado, fill: 'hsl(var(--primary))' }, // Blue
-        { name: 'Cancelado', value: statusCounts.Cancelado, fill: 'hsl(var(--destructive))' }, // Red
-      ].filter(d => d.value > 0));
-
-      // 11. Fetch Pending Anamnesis Alerts
-      // Clients who have an appointment in the next 7 days but no filled anamnesis
-      const in7Days = new Date();
-      in7Days.setDate(in7Days.getDate() + 7);
-      const endOf7Days = in7Days.toISOString().split('T')[0];
-
-      const { data: upcomingAppts } = await supabase
-        .from('nx_appointments')
-        .select(`
-          client_id,
-          date,
-          clients (
-            name,
-            phone
-          )
-        `)
-        .gte('date', today)
-        .lte('date', endOf7Days)
-        .order('date');
-
-      if (upcomingAppts && upcomingAppts.length > 0) {
-        const clientIds = [...new Set(upcomingAppts.map(a => a.client_id))].filter(id => id !== null); // Removing duplicates and nulls
-
-        const { data: existingAnamnesisOnes } = await supabase
-          .from('nx_anamnesis')
-          .select('client_id');
-
-        const existingIds = new Set(existingAnamnesisOnes?.map(a => a.client_id) || []);
-
-        const pendingAlerts = upcomingAppts
-          .filter(appt => appt.client_id && !existingIds.has(appt.client_id))
-          .map(appt => ({
-            client_id: appt.client_id,
-            name: (appt.clients as any)?.name,
-            phone: (appt.clients as any)?.phone,
-            date: new Date(appt.date).toLocaleDateString('pt-BR')
-          }));
-
-        // Remove duplicate clients in the alerts (e.g., if booked twice in 7 days)
-        const uniqueAlerts = pendingAlerts.filter((v, i, a) => a.findIndex(v2 => (v2.client_id === v.client_id)) === i);
-        setPendingAnamnesisAlerts(uniqueAlerts);
-      } else {
-        setPendingAnamnesisAlerts([]);
-      }
-
-      // 5. Fetch Today's Clients List
-      const { data: nextClients } = await supabase
-        .from('nx_appointments')
-        .select(`
-          *,
-          clients (
-            name
-          )
-        `)
-        .eq('date', today)
-        .order('start_time');
-
-      setTodayClients(nextClients?.map(appt => ({
-        id: appt.id,
-        client_id: appt.client_id,
-        name: (appt.clients as any)?.name || "Desconhecido",
-        time: appt.start_time.substring(0, 5),
-        type: appt.notes || "Sessão de Tattoo",
-        status: appt.status,
-        value: appt.value || 0,
-        date: appt.date
-      })) || []);
-
-      // 6. Fetch Recent Payments
-      const { data: payments } = await supabase
-        .from('nx_financial_transactions')
-        .select('*')
-        .eq('type', 'entrada')
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      setRecentPayments(payments?.map(p => ({
-        client: p.description.split(' - ')[1]?.split(' (')[0] || "Cliente",
-        value: `R$ ${Number(p.value).toLocaleString('pt-BR')}`,
-        date: new Date(p.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-        status: p.status
-      })) || []);
-
-      // 12. Fetch Tomorrow's Appointments for Confirmation Alert
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const tomorrowStr = tomorrow.toISOString().split('T')[0];
-
-      const { data: tomAppts } = await supabase
-        .from('nx_appointments')
-        .select(`
-          *,
-          clients (
-            name,
-            phone
-          )
-        `)
-        .eq('date', tomorrowStr)
-        .order('start_time');
-
-      setTomorrowAppointments(tomAppts?.map(appt => ({
-        id: appt.id,
-        name: (appt.clients as any)?.name || "Cliente",
-        phone: (appt.clients as any)?.phone || "",
-        time: appt.start_time.substring(0, 5)
-      })) || []);
+      setStatsData(data.stats);
+      setRevenueChartData(data.revenueChartData);
+      setAppointmentsStatusData(data.appointmentsStatusData);
+      setPendingAnamnesisAlerts(data.pendingAnamnesisAlerts);
+      setTodayClients(data.todayClients);
+      setRecentPayments(data.recentPayments);
+      setTomorrowAppointments(data.tomorrowAppointments);
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -344,37 +116,29 @@ const Index = () => {
   const handleCheckout = async () => {
     if (!selectedCheckout) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const token = localStorage.getItem("noxus_token");
+      if (!token) {
         toast.error("Você precisa estar logado.");
         return;
       }
 
-      // Update Appointment
-      const finalStatus = checkoutData.status === 'Recebido' || checkoutData.status === 'Apenas Consulta' ? 'Concluído' : 'Cancelado';
-      const { error: apptError } = await supabase
-        .from('nx_appointments')
-        .update({ status: finalStatus, value: checkoutData.value })
-        .eq('id', selectedCheckout.id);
+      const res = await fetch("http://localhost:3000/api/appointments/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          appointmentId: selectedCheckout.id,
+          status: checkoutData.status,
+          value: checkoutData.value,
+          paymentMethod: checkoutData.paymentMethod,
+          name: selectedCheckout.name,
+          date: selectedCheckout.date
+        })
+      });
 
-      if (apptError) throw apptError;
-
-      // Insert Financial Transaction if received
-      if (checkoutData.status === 'Recebido' && checkoutData.value > 0) {
-        const { error: finError } = await supabase
-          .from('nx_financial_transactions')
-          .insert({
-            description: `Sessão - ${selectedCheckout.name} (${checkoutData.paymentMethod})`,
-            value: checkoutData.value,
-            type: 'entrada',
-            status: 'Pago',
-            date: selectedCheckout.date,
-            appointment_id: selectedCheckout.id,
-            user_id: user.id
-          });
-        
-        if (finError) throw finError;
-      }
+      if (!res.ok) throw new Error("Falha no checkout");
 
       toast.success("Sessão baixada com sucesso!");
       setCheckoutModalOpen(false);
@@ -434,6 +198,13 @@ const Index = () => {
       icon: Clock,
       change: "Geral",
       trend: "down" as const,
+    },
+    {
+      label: "Ticket Médio",
+      value: statsData.monthlyRevenue === "R$ 0" ? "R$ 0" : `R$ ${Math.round(Number(statsData.monthlyRevenue.replace(/\D/g, '')) / 100 / (Number(statsData.sessionsToday) || 1)).toLocaleString('pt-BR')}`,
+      icon: DollarSign,
+      change: "Média",
+      trend: "up" as const,
     },
   ];
 
@@ -522,8 +293,8 @@ const Index = () => {
         {stats.map((stat) => (
           <div key={stat.label} className="stat-card group">
             <div className="flex items-start justify-between">
-              <div className="rounded-lg bg-accent p-2.5">
-                <stat.icon className="h-5 w-5 text-primary" />
+              <div className="rounded-lg bg-accent p-2 md:p-2.5">
+                <stat.icon className="h-4 w-4 md:h-5 md:w-5 text-primary" />
               </div>
               <span
                 className={`inline-flex items-center gap-1 text-xs font-medium ${stat.trend === "up"
@@ -539,11 +310,11 @@ const Index = () => {
                 {stat.change}
               </span>
             </div>
-            <div className="mt-4">
-              <p className="text-2xl font-bold text-foreground">
+            <div className="mt-2 md:mt-4">
+              <p className="text-xl md:text-2xl font-bold text-foreground">
                 {loading ? "..." : stat.value}
               </p>
-              <p className="text-sm text-muted-foreground mt-1">{stat.label}</p>
+              <p className="text-xs md:text-sm text-muted-foreground mt-0.5 md:mt-1">{stat.label}</p>
             </div>
           </div>
         ))}

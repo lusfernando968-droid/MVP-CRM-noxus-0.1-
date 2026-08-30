@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Shield, Key, Users, Plus, CheckCircle, Clock } from 'lucide-react';
+import { Shield, Key, Users, Plus, CheckCircle, Clock, Smartphone, Mail, DollarSign, Calendar, CreditCard } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
 
 export default function SuperAdmin() {
@@ -13,30 +14,49 @@ export default function SuperAdmin() {
   const [loading, setLoading] = useState(true);
   const [codes, setCodes] = useState<any[]>([]);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
+  
+  // Novos estados para o cadastro completo
   const [newStudentName, setNewStudentName] = useState('');
+  const [newStudentPhone, setNewStudentPhone] = useState('');
+  const [newStudentEmail, setNewStudentEmail] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [subscriptionValue, setSubscriptionValue] = useState('');
+
+  const isDemoMode = localStorage.getItem("noxus_demo_mode") === "true";
 
   useEffect(() => {
+    const demoRole = localStorage.getItem("noxus_demo_role");
+    if (isDemoMode && demoRole === "admin") {
+      setHasAnyAdmin(true);
+      setIsAdmin(true);
+      fetchCodes();
+      fetchSubscriptions();
+      setLoading(false);
+      return;
+    }
     checkAdminStatus();
   }, []);
 
   const checkAdminStatus = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const token = localStorage.getItem("noxus_token");
+      if (!token) return;
 
-      const { data: adminData } = await supabase
-        .from('nx_admin_users')
-        .select('*');
+      const res = await fetch("http://localhost:3000/api/me", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
       
-      if (!adminData || adminData.length === 0) {
-        setHasAnyAdmin(false);
+      if (!res.ok) return;
+
+      const { user } = await res.json();
+      
+      if (user && (user.role === 'MASTER' || user.role === 'SUPERADMIN')) {
+        setIsAdmin(true);
+        setHasAnyAdmin(true);
+        fetchCodes();
+        fetchSubscriptions();
       } else {
-        const isMe = adminData.some(a => a.user_id === user.id);
-        setIsAdmin(isMe);
-        if (isMe) {
-          fetchCodes();
-          fetchSubscriptions();
-        }
+        setHasAnyAdmin(false);
       }
     } catch (error) {
       console.error(error);
@@ -45,54 +65,106 @@ export default function SuperAdmin() {
     }
   };
 
-  const claimAdmin = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { error } = await supabase
-        .from('nx_admin_users')
-        .insert({ user_id: user.id });
-
-      if (error) throw error;
-      toast.success("Parabéns! Você agora é o Super Admin.");
-      checkAdminStatus();
-    } catch (error) {
-      console.error(error);
-      toast.error("Erro ao clamar admin. Talvez já exista um.");
-    }
-  };
-
   const generateCode = async () => {
-    if (!newStudentName) {
-      toast.error("Digite o nome do aluno.");
+    if (!newStudentName || !paymentMethod || !subscriptionValue) {
+      toast.error("Preencha o nome, método de pagamento e valor.");
       return;
     }
     const randomCode = 'NOXUS-' + Math.random().toString(36).substring(2, 6).toUpperCase();
     
-    try {
-      const { error } = await supabase
-        .from('nx_access_codes')
-        .insert({ code: randomCode, student_name: newStudentName });
+    const newClientData = {
+      code: randomCode,
+      student_name: newStudentName,
+      phone: newStudentPhone,
+      email: newStudentEmail,
+      payment_method: paymentMethod,
+      value: subscriptionValue,
+      status: 'available',
+      created_at: new Date().toISOString()
+    };
 
-      if (error) throw error;
+    try {
+      if (isDemoMode) {
+        // Salvar localmente para demonstração
+        const localCodes = JSON.parse(localStorage.getItem("mock_nx_codes") || "[]");
+        localCodes.push({ id: Math.random(), ...newClientData });
+        localStorage.setItem("mock_nx_codes", JSON.stringify(localCodes));
+        
+        toast.success(`Cliente registrado e Código ${randomCode} gerado com sucesso!`);
+        clearForm();
+        fetchCodes();
+        return;
+      }
+
+      const token = localStorage.getItem("noxus_token");
+      const res = await fetch("http://localhost:3000/api/admin/codes", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(newClientData)
+      });
+
+      if (!res.ok) throw new Error("Erro ao criar código");
+      
       toast.success(`Código ${randomCode} gerado com sucesso!`);
-      setNewStudentName('');
+      clearForm();
       fetchCodes();
     } catch (error) {
       console.error(error);
-      toast.error("Erro ao gerar código.");
+      toast.error("Erro ao gerar código e registrar cliente.");
     }
   };
 
+  const clearForm = () => {
+    setNewStudentName('');
+    setNewStudentPhone('');
+    setNewStudentEmail('');
+    setPaymentMethod('');
+    setSubscriptionValue('');
+  };
+
   const fetchCodes = async () => {
-    const { data } = await supabase.from('nx_access_codes').select('*').order('created_at', { ascending: false });
-    if (data) setCodes(data);
+    if (isDemoMode) {
+      const localCodes = JSON.parse(localStorage.getItem("mock_nx_codes") || "[]");
+      setCodes(localCodes.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("noxus_token");
+      const res = await fetch("http://localhost:3000/api/admin/codes", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCodes(data);
+      }
+    } catch (error) {
+      console.error("Erro ao buscar códigos", error);
+    }
   };
 
   const fetchSubscriptions = async () => {
-    const { data } = await supabase.from('nx_subscriptions').select('*').order('expires_at', { ascending: true });
-    if (data) setSubscriptions(data);
+    if (isDemoMode) {
+      const localSubs = JSON.parse(localStorage.getItem("mock_nx_subs") || "[]");
+      setSubscriptions(localSubs);
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("noxus_token");
+      const res = await fetch("http://localhost:3000/api/admin/subscriptions", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSubscriptions(data);
+      }
+    } catch (error) {
+      console.error("Erro ao buscar assinaturas", error);
+    }
   };
 
   const renewSubscription = async (id: string, currentExpiry: string) => {
@@ -100,12 +172,22 @@ export default function SuperAdmin() {
       const date = new Date(currentExpiry);
       date.setDate(date.getDate() + 30); // Adiciona 30 dias
 
-      const { error } = await supabase
-        .from('nx_subscriptions')
-        .update({ expires_at: date.toISOString(), status: 'active' })
-        .eq('id', id);
+      if (isDemoMode) {
+        toast.success("Assinatura renovada por +30 dias!");
+        return;
+      }
 
-      if (error) throw error;
+      const token = localStorage.getItem("noxus_token");
+      const res = await fetch(`http://localhost:3000/api/admin/subscriptions/${id}/renew`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ expiresAt: date.toISOString() })
+      });
+
+      if (!res.ok) throw new Error("Erro ao renovar");
       toast.success("Assinatura renovada por +30 dias!");
       fetchSubscriptions();
     } catch (error) {
@@ -116,18 +198,7 @@ export default function SuperAdmin() {
 
   if (loading) return <div className="p-8 text-center">Carregando painel admin...</div>;
 
-  if (!hasAnyAdmin) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[80vh] p-4 text-center">
-        <Shield className="w-16 h-16 text-primary mb-4" />
-        <h1 className="text-3xl font-bold mb-2">Sistema Sem Dono</h1>
-        <p className="text-muted-foreground mb-8">Nenhum administrador foi definido ainda. Reivindique o controle do aplicativo agora.</p>
-        <Button size="lg" onClick={claimAdmin}>Reivindicar Super Admin</Button>
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
+  if (!isAdmin && !isDemoMode) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[80vh] p-4 text-center text-destructive">
         <Shield className="w-16 h-16 mb-4" />
@@ -142,84 +213,183 @@ export default function SuperAdmin() {
       <div>
         <h1 className="text-3xl font-bold flex items-center gap-2">
           <Shield className="text-primary" />
-          Painel Super Admin
+          Painel Administrativo
         </h1>
-        <p className="text-muted-foreground">Gerencie o acesso dos seus alunos e renovações de assinatura.</p>
+        <p className="text-muted-foreground">Gerencie o cadastro, assinaturas e vendas do seu software para outros tatuadores.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Key className="w-5 h-5" /> Gerar Código de Acesso</CardTitle>
-            <CardDescription>Crie um convite para um novo aluno se cadastrar no aplicativo.</CardDescription>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        
+        {/* Formulário de Cadastro do Cliente */}
+        <Card className="xl:col-span-1 shadow-lg border-primary/20 bg-card/50 backdrop-blur-sm">
+          <CardHeader className="bg-primary/5 rounded-t-xl border-b border-primary/10">
+            <CardTitle className="flex items-center gap-2 text-primary">
+              <Users className="w-5 h-5" /> Cadastrar Novo Cliente
+            </CardTitle>
+            <CardDescription>Registre a venda da assinatura e gere a chave de acesso do tatuador.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-5 pt-6">
             <div className="space-y-2">
-              <Label>Nome do Aluno</Label>
+              <Label className="flex items-center gap-2"><Users className="w-4 h-4 text-muted-foreground"/> Nome do Cliente</Label>
               <Input 
                 placeholder="Ex: João Tatuador" 
                 value={newStudentName}
                 onChange={e => setNewStudentName(e.target.value)}
+                className="bg-background/50"
               />
             </div>
-            <Button onClick={generateCode} className="w-full">
-              <Plus className="w-4 h-4 mr-2" /> Gerar Código Único
+            
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2"><Smartphone className="w-4 h-4 text-muted-foreground"/> Telefone / WhatsApp</Label>
+              <Input 
+                placeholder="(00) 00000-0000" 
+                value={newStudentPhone}
+                onChange={e => setNewStudentPhone(e.target.value)}
+                className="bg-background/50"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2"><Mail className="w-4 h-4 text-muted-foreground"/> E-mail (Opcional)</Label>
+              <Input 
+                type="email"
+                placeholder="email@exemplo.com" 
+                value={newStudentEmail}
+                onChange={e => setNewStudentEmail(e.target.value)}
+                className="bg-background/50"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2"><DollarSign className="w-4 h-4 text-muted-foreground"/> Valor (R$)</Label>
+                <Input 
+                  type="number"
+                  placeholder="97.00" 
+                  value={subscriptionValue}
+                  onChange={e => setSubscriptionValue(e.target.value)}
+                  className="bg-background/50"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2"><CreditCard className="w-4 h-4 text-muted-foreground"/> Pagamento</Label>
+                <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                  <SelectTrigger className="bg-background/50">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Pix">Pix</SelectItem>
+                    <SelectItem value="Cartão de Crédito">Cartão de Crédito</SelectItem>
+                    <SelectItem value="Boleto">Boleto</SelectItem>
+                    <SelectItem value="Outro">Outro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <Button onClick={generateCode} className="w-full mt-4 h-12 text-md font-semibold">
+              <Key className="w-5 h-5 mr-2" /> Registrar Venda e Gerar Chave
             </Button>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Users className="w-5 h-5" /> Assinaturas Ativas</CardTitle>
-            <CardDescription>Controle quem tem acesso liberado ao aplicativo.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4 max-h-[300px] overflow-y-auto">
-              {subscriptions.map(sub => (
-                <div key={sub.id} className="flex justify-between items-center p-3 bg-secondary/50 rounded-lg">
-                  <div>
-                    <p className="font-medium text-sm">Usuário ID: <span className="text-xs text-muted-foreground">{sub.user_id.substring(0,8)}...</span></p>
-                    <p className={`text-xs flex items-center gap-1 ${new Date(sub.expires_at) < new Date() ? 'text-destructive' : 'text-success'}`}>
-                      <Clock className="w-3 h-3" /> Vence em: {new Date(sub.expires_at).toLocaleDateString()}
-                    </p>
+        {/* Histórico e Gestão de Clientes */}
+        <div className="xl:col-span-2 space-y-6">
+          <Card className="shadow-md">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Users className="w-5 h-5" /> Assinaturas Ativas na Plataforma</CardTitle>
+              <CardDescription>Controle quem tem acesso liberado ao aplicativo e realize renovações.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                {subscriptions.map(sub => (
+                  <div key={sub.id} className="flex justify-between items-center p-4 bg-secondary/30 rounded-xl border border-border/50 hover:bg-secondary/50 transition-colors">
+                    <div className="flex flex-col gap-1">
+                      <p className="font-semibold text-foreground">ID do Aluno: <span className="font-mono text-xs text-muted-foreground ml-1 bg-background px-2 py-0.5 rounded">{sub.user_id.substring(0,8)}</span></p>
+                      <p className={`text-sm flex items-center gap-1.5 font-medium ${new Date(sub.expires_at) < new Date() ? 'text-destructive' : 'text-success'}`}>
+                        <Clock className="w-4 h-4" /> Vence em: {new Date(sub.expires_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <Button size="sm" variant="outline" className="hover:bg-primary hover:text-primary-foreground transition-colors" onClick={() => renewSubscription(sub.id, sub.expires_at)}>
+                      +30 Dias
+                    </Button>
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => renewSubscription(sub.id, sub.expires_at)}>
-                    +30 Dias
-                  </Button>
-                </div>
-              ))}
-              {subscriptions.length === 0 && <p className="text-sm text-muted-foreground">Nenhum aluno cadastrado ainda.</p>}
-            </div>
-          </CardContent>
-        </Card>
+                ))}
+                {subscriptions.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground bg-muted/20 rounded-lg border border-dashed">
+                    Nenhum aluno ativo encontrado. Registre sua primeira venda ao lado!
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle>Histórico de Códigos Gerados</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {codes.map(code => (
-                <div key={code.id} className="p-4 border rounded-lg flex flex-col gap-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-mono font-bold text-lg">{code.code}</span>
-                    {code.status === 'used' ? (
-                      <span className="bg-success/20 text-success px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" /> Usado
-                      </span>
-                    ) : (
-                      <span className="bg-blue-500/20 text-blue-500 px-2 py-1 rounded-full text-xs font-medium">
-                        Disponível
-                      </span>
-                    )}
+          <Card className="shadow-md">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Calendar className="w-5 h-5" /> Histórico de Cadastros e Chaves</CardTitle>
+              <CardDescription>Relação de todas as vendas e códigos gerados para seus clientes.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                {codes.map((code, idx) => (
+                  <div key={code.id || idx} className="p-5 border rounded-xl flex flex-col gap-3 bg-card relative overflow-hidden group hover:border-primary/50 transition-colors">
+                    {/* Tarja colorida lateral */}
+                    <div className={`absolute left-0 top-0 bottom-0 w-1 ${code.status === 'used' ? 'bg-success' : 'bg-primary'}`} />
+                    
+                    <div className="flex justify-between items-start pl-2">
+                      <div>
+                        <span className="font-mono font-bold text-xl tracking-wider">{code.code}</span>
+                        <p className="text-sm font-medium text-foreground mt-1">{code.student_name}</p>
+                      </div>
+                      {code.status === 'used' ? (
+                        <span className="bg-success/10 text-success px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-sm border border-success/20">
+                          <CheckCircle className="w-3.5 h-3.5" /> ATIVADO
+                        </span>
+                      ) : (
+                        <span className="bg-primary/10 text-primary px-2.5 py-1 rounded-full text-xs font-bold shadow-sm border border-primary/20">
+                          AGUARDANDO
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 mt-2 pl-2 border-t pt-3 border-border/50">
+                      {code.created_at && (
+                        <div className="text-xs flex flex-col">
+                          <span className="text-muted-foreground uppercase text-[10px] font-bold">Data da Venda</span>
+                          <span className="font-medium">{new Date(code.created_at).toLocaleDateString('pt-BR')}</span>
+                        </div>
+                      )}
+                      {code.value && (
+                        <div className="text-xs flex flex-col">
+                          <span className="text-muted-foreground uppercase text-[10px] font-bold">Valor</span>
+                          <span className="font-medium text-success">R$ {code.value}</span>
+                        </div>
+                      )}
+                      {code.payment_method && (
+                        <div className="text-xs flex flex-col">
+                          <span className="text-muted-foreground uppercase text-[10px] font-bold">Forma de Pag.</span>
+                          <span className="font-medium">{code.payment_method}</span>
+                        </div>
+                      )}
+                      {code.phone && (
+                        <div className="text-xs flex flex-col">
+                          <span className="text-muted-foreground uppercase text-[10px] font-bold">Telefone</span>
+                          <span className="font-medium">{code.phone}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-sm text-muted-foreground">Para: {code.student_name}</p>
-                </div>
-              ))}
-              {codes.length === 0 && <p className="text-sm text-muted-foreground">Nenhum código gerado.</p>}
-            </div>
-          </CardContent>
-        </Card>
+                ))}
+                {codes.length === 0 && (
+                  <div className="md:col-span-2 text-center py-10 text-muted-foreground bg-muted/20 rounded-lg border border-dashed">
+                    Você ainda não gerou nenhuma chave de acesso.
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

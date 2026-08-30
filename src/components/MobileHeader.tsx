@@ -35,49 +35,66 @@ export function MobileHeader() {
     isOpenRef.current = isOpen;
   }, [isOpen]);
 
+  const [role, setRole] = useState<string | null>(null);
+
   // Load user info
   useEffect(() => {
-    const isDemoMode = localStorage.getItem("noxus_demo_mode") === "true";
-    if (isDemoMode) {
-      setUser({ name: "Modo Demo", email: "demo@noxus.app" });
-      return;
-    }
     const fetchUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        setUser({
-          email: session.user.email,
-          name: session.user.user_metadata?.full_name || "Usuário",
+      try {
+        const token = localStorage.getItem("noxus_token");
+        if (!token) return;
+
+        const res = await fetch("http://localhost:3000/api/me", {
+          headers: { "Authorization": `Bearer ${token}` }
         });
-        const { data: profile } = await supabase
-          .from("users")
-          .select("nome")
-          .eq("id", session.user.id)
-          .single();
-        if (profile) setUser(prev => ({ ...prev, name: profile.nome || prev?.name }));
+        
+        if (res.ok) {
+          const { user } = await res.json();
+          setUser({ email: user.email, name: user.name });
+          setRole(user.role);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar usuário:", error);
       }
     };
     fetchUser();
   }, []);
 
-  // Subscribe to support messages for unread badge
-  useEffect(() => {
-    const subscription = supabase
-      .channel("mobile_header_support")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "nx_support_messages" },
-        (payload) => {
-          const msg = payload.new as Message;
-          if (!isOpenRef.current && msg.is_from_support) {
-            setUnreadCount((prev) => prev + 1);
+  // Polling for support messages
+  const fetchMessages = async (isInitial = false) => {
+    if (isInitial) setLoading(true);
+    const token = localStorage.getItem("noxus_token");
+    if (!token) return;
+
+    try {
+      const res = await fetch("http://localhost:3000/api/support", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMessages(prev => {
+          if (data.length > prev.length) {
+            const newMsgs = data.slice(prev.length);
+            const hasNewFromSupport = newMsgs.some((m: Message) => m.is_from_support);
+            if (!isOpenRef.current && hasNewFromSupport) {
+              setUnreadCount(c => c + 1);
+            }
           }
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === msg.id)) return prev;
-            return [...prev, msg];
-          });
-        }
-      )
-      .subscribe();
-    return () => { subscription.unsubscribe(); };
+          return data;
+        });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    if (isInitial) setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchMessages(true);
+    const intervalId = setInterval(() => {
+      fetchMessages(false);
+    }, 3000);
+    return () => clearInterval(intervalId);
   }, []);
 
   // Scroll to bottom when new messages arrive
@@ -87,34 +104,32 @@ export function MobileHeader() {
     }
   }, [messages]);
 
-  const fetchMessages = async () => {
-    setLoading(true);
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    if (!authUser) { setLoading(false); return; }
-    const { data, error } = await supabase
-      .from("nx_support_messages")
-      .select("*")
-      .eq("user_id", authUser.id)
-      .order("created_at", { ascending: true });
-    if (!error && data) setMessages(data);
-    setLoading(false);
-  };
-
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || sending) return;
     setSending(true);
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    if (!authUser) { setSending(false); return; }
-    const { data, error } = await supabase
-      .from("nx_support_messages")
-      .insert({ user_id: authUser.id, message: newMessage.trim(), is_from_support: false })
-      .select()
-      .single();
-    if (!error && data) {
-      setMessages((prev) => prev.some((m) => m.id === data.id) ? prev : [...prev, data as Message]);
+
+    const token = localStorage.getItem("noxus_token");
+    if (!token) { setSending(false); return; }
+
+    try {
+      const res = await fetch("http://localhost:3000/api/support", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ message: newMessage.trim() })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setMessages((prev) => [...prev, data]);
+        setNewMessage("");
+      }
+    } catch (error) {
+      console.error(error);
     }
-    setNewMessage("");
     setSending(false);
   };
 
@@ -248,6 +263,41 @@ export function MobileHeader() {
                 <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
               </div>
             </button>
+
+            {(role === 'MASTER' || role === 'SUPERADMIN') && (
+              <>
+                <button
+                  onClick={() => { setIsOpen(false); navigate("/admin-noxus"); }}
+                  className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl hover:bg-muted/60 transition-colors text-left group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-xl bg-purple-500/10 flex items-center justify-center">
+                      <User className="h-4 w-4 text-purple-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Gestão de Clientes</p>
+                      <p className="text-xs text-muted-foreground">Admin Noxus</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+                </button>
+                <button
+                  onClick={() => { setIsOpen(false); navigate("/admin-dashboard"); }}
+                  className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl hover:bg-muted/60 transition-colors text-left group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-xl bg-purple-500/10 flex items-center justify-center">
+                      <User className="h-4 w-4 text-purple-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Dashboard Admin</p>
+                      <p className="text-xs text-muted-foreground">Métricas Geriais</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+                </button>
+              </>
+            )}
 
             <div className="pt-2 border-t border-border/40 mt-2">
               <button

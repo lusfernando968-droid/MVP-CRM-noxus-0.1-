@@ -2,7 +2,6 @@ import { MessageCircle, X, Send, Loader2 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabase";
 
 interface Message {
     id: string;
@@ -26,17 +25,6 @@ export function SupportChat() {
         isOpenRef.current = isOpen;
         if (isOpen) {
             setUnreadCount(0);
-            fetchMessages();
-            const subscription = subscribeToMessages();
-            return () => {
-                subscription.unsubscribe();
-            };
-        } else {
-            // Keep subscription active even when closed to receive notifications
-            const subscription = subscribeToMessages();
-            return () => {
-                subscription.unsubscribe();
-            };
         }
     }, [isOpen]);
 
@@ -46,79 +34,68 @@ export function SupportChat() {
         }
     }, [messages]);
 
-    const fetchMessages = async () => {
-        setLoading(true);
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+    const fetchMessages = async (isInitial = false) => {
+        if (isInitial) setLoading(true);
+        const token = localStorage.getItem("noxus_token");
+        if (!token) return;
 
-        const { data, error } = await supabase
-            .from('nx_support_messages')
-            .select('*')
-            .eq('user_id', user.id)
-            .order('created_at', { ascending: true });
-
-        if (!error && data) {
-            setMessages(data);
-        }
-        setLoading(false);
-    };
-
-    const subscribeToMessages = () => {
-        return supabase
-            .channel('support_messages_changes_client')
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'nx_support_messages'
-                },
-                (payload) => {
-                    const newMessage = payload.new as Message;
-
-                    // Only process messages for the current user if we had a way to filter, but since we are client side, 
-                    // we ideally should filter by user_id. Let's get the user id first, but since we are in a listener,
-                    // we'll fetch user or just assume the message is for the channel. Actually RLS protects it, 
-                    // so we only receive our own messages.
-
-                    if (!isOpenRef.current && newMessage.is_from_support) {
-                        setUnreadCount((prev) => prev + 1);
+        try {
+            const res = await fetch("http://localhost:3000/api/support", {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                
+                setMessages(prev => {
+                    if (data.length > prev.length) {
+                        const newMsgs = data.slice(prev.length);
+                        const hasNewFromSupport = newMsgs.some((m: Message) => m.is_from_support);
+                        if (!isOpenRef.current && hasNewFromSupport) {
+                            setUnreadCount(c => c + 1);
+                        }
                     }
-
-                    setMessages((prev) => {
-                        if (prev.some(m => m.id === newMessage.id)) return prev;
-                        return [...prev, newMessage];
-                    });
-                }
-            )
-            .subscribe();
+                    return data;
+                });
+            }
+        } catch (e) {
+            console.error(e);
+        }
+        if (isInitial) setLoading(false);
     };
+
+    useEffect(() => {
+        fetchMessages(true);
+        const intervalId = setInterval(() => {
+            fetchMessages(false);
+        }, 3000);
+        return () => clearInterval(intervalId);
+    }, []);
 
     const sendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newMessage.trim() || sending) return;
 
         setSending(true);
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        const token = localStorage.getItem("noxus_token");
+        if (!token) return;
 
-        const { data, error } = await supabase
-            .from('nx_support_messages')
-            .insert({
-                user_id: user.id,
-                message: newMessage.trim(),
-                is_from_support: false
-            })
-            .select()
-            .single();
+        try {
+            const res = await fetch("http://localhost:3000/api/support", {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({ message: newMessage.trim() })
+            });
 
-        if (error) {
-            console.error("Error sending message:", error);
-        } else {
-            setNewMessage("");
-            if (data) {
-                setMessages(prev => prev.some(m => m.id === data.id) ? prev : [...prev, data as Message]);
+            if (res.ok) {
+                const data = await res.json();
+                setNewMessage("");
+                setMessages(prev => [...prev, data]);
             }
+        } catch (error) {
+            console.error("Error sending message:", error);
         }
         setSending(false);
     };
