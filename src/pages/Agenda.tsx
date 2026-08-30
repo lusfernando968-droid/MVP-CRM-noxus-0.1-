@@ -686,8 +686,8 @@ const Agenda = () => {
             selectable={true}
             selectMirror={true}
             select={handleSelect}
-            selectLongPressDelay={250}
-            eventLongPressDelay={250}
+            selectLongPressDelay={1000}
+            eventLongPressDelay={1000}
             editable={true}
             eventDrop={handleEventChange}
             eventResize={handleEventChange}
