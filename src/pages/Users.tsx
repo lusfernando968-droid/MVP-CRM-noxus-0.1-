@@ -47,7 +47,7 @@ export default function Users() {
         setLoading(true);
         const token = localStorage.getItem("noxus_token");
         try {
-            const res = await fetch("http://localhost:3000/api/admin/users", {
+            const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/admin/users", {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             if (!res.ok) throw new Error("Falha ao buscar usuários");
@@ -64,7 +64,7 @@ export default function Users() {
         setUpdatingId(userId);
         const token = localStorage.getItem("noxus_token");
         try {
-            const res = await fetch(`http://localhost:3000/api/admin/users/${userId}/toggle`, {
+            const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/admin/users/${userId}/toggle`, {
                 method: "PUT",
                 headers: { 
                     "Content-Type": "application/json",

@@ -46,7 +46,7 @@ const Financial = () => {
       const token = localStorage.getItem("noxus_token");
       if (!token) return;
 
-      const res = await fetch("http://localhost:3000/api/financial", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/financial", {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (!res.ok) throw new Error("Error fetching transactions");
@@ -90,7 +90,7 @@ const Financial = () => {
         return;
       }
 
-      const res = await fetch("http://localhost:3000/api/financial", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/financial", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -42,7 +42,7 @@ export default function SuperAdmin() {
       const token = localStorage.getItem("noxus_token");
       if (!token) return;
 
-      const res = await fetch("http://localhost:3000/api/me", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/me", {
         headers: { "Authorization": `Bearer ${token}` }
       });
       
@@ -97,7 +97,7 @@ export default function SuperAdmin() {
       }
 
       const token = localStorage.getItem("noxus_token");
-      const res = await fetch("http://localhost:3000/api/admin/codes", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/admin/codes", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -134,7 +134,7 @@ export default function SuperAdmin() {
 
     try {
       const token = localStorage.getItem("noxus_token");
-      const res = await fetch("http://localhost:3000/api/admin/codes", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/admin/codes", {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (res.ok) {
@@ -155,7 +155,7 @@ export default function SuperAdmin() {
 
     try {
       const token = localStorage.getItem("noxus_token");
-      const res = await fetch("http://localhost:3000/api/admin/subscriptions", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/admin/subscriptions", {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (res.ok) {
@@ -178,7 +178,7 @@ export default function SuperAdmin() {
       }
 
       const token = localStorage.getItem("noxus_token");
-      const res = await fetch(`http://localhost:3000/api/admin/subscriptions/${id}/renew`, {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/admin/subscriptions/${id}/renew`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

@@ -37,7 +37,7 @@ export default function AnamnesisForm() {
             if (!clientId) return;
 
             try {
-                const res = await fetch(`http://localhost:3000/api/anamnesis/${clientId}`);
+                const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/anamnesis/${clientId}`);
                 const data = await res.json();
                 
                 if (!res.ok) {
@@ -88,7 +88,7 @@ export default function AnamnesisForm() {
                 age--;
             }
 
-            const res = await fetch(`http://localhost:3000/api/anamnesis/${clientId}`, {
+            const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/anamnesis/${clientId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

@@ -86,7 +86,7 @@ export function SupportAdmin() {
             const token = localStorage.getItem("noxus_token");
             if (!token) return;
 
-            const res = await fetch("http://localhost:3000/api/admin/support", {
+            const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/admin/support", {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             if (res.ok) {
@@ -116,7 +116,7 @@ export function SupportAdmin() {
             const token = localStorage.getItem("noxus_token");
             if (!token) return;
 
-            const res = await fetch(`http://localhost:3000/api/admin/support/${userId}`, {
+            const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/admin/support/${userId}`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             if (res.ok) {
@@ -139,7 +139,7 @@ export function SupportAdmin() {
             const token = localStorage.getItem("noxus_token");
             if (!token) return;
 
-            const res = await fetch(`http://localhost:3000/api/admin/support/${selectedUser.id}`, {
+            const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/admin/support/${selectedUser.id}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

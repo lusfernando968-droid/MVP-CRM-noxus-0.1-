@@ -45,7 +45,7 @@ export function AppSidebar() {
         const token = localStorage.getItem("noxus_token");
         if (!token) return;
 
-        const res = await fetch("http://localhost:3000/api/me", {
+        const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/me", {
           headers: { "Authorization": `Bearer ${token}` }
         });
         

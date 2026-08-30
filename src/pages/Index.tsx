@@ -75,7 +75,7 @@ const Index = () => {
       const token = localStorage.getItem("noxus_token");
       if (!token) return;
 
-      const res = await fetch("http://localhost:3000/api/dashboard", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/dashboard", {
         headers: {
           "Authorization": `Bearer ${token}`
         }
@@ -122,7 +122,7 @@ const Index = () => {
         return;
       }
 
-      const res = await fetch("http://localhost:3000/api/appointments/checkout", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/appointments/checkout", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

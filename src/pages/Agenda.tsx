@@ -91,7 +91,7 @@ const Agenda = () => {
       const token = localStorage.getItem("noxus_token");
       if (!token) return;
 
-      const res = await fetch("http://localhost:3000/api/appointments", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/appointments", {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (!res.ok) throw new Error("Erro");
@@ -108,7 +108,7 @@ const Agenda = () => {
     try {
       const token = localStorage.getItem("noxus_token");
       if (!token) return;
-      const res = await fetch("http://localhost:3000/api/clients", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/clients", {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (!res.ok) throw new Error("Erro");
@@ -235,7 +235,7 @@ const Agenda = () => {
       const token = localStorage.getItem("noxus_token");
       if (!token) return;
 
-      const res = await fetch(`http://localhost:3000/api/appointments/${editingAppointment.id}`, {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/appointments/${editingAppointment.id}`, {
         method: 'DELETE',
         headers: { "Authorization": `Bearer ${token}` }
       });
@@ -268,7 +268,7 @@ const Agenda = () => {
       }
 
       if (editingAppointment) {
-        const res = await fetch(`http://localhost:3000/api/appointments/${editingAppointment.id}`, {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/appointments/${editingAppointment.id}`, {
           method: 'PUT',
           headers: {
             "Content-Type": "application/json",
@@ -278,7 +278,7 @@ const Agenda = () => {
         });
         if (!res.ok) throw new Error("Erro ao atualizar");
       } else {
-        const res = await fetch(`http://localhost:3000/api/appointments`, {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/appointments`, {
           method: 'POST',
           headers: {
             "Content-Type": "application/json",
@@ -322,7 +322,7 @@ const Agenda = () => {
       const appt = appointments.find(a => a.id === event.id);
       if (!appt) return;
 
-      const res = await fetch(`http://localhost:3000/api/appointments/${event.id}`, {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/appointments/${event.id}`, {
         method: 'PUT',
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({
@@ -353,7 +353,7 @@ const Agenda = () => {
       const appt = appointments.find(a => a.id === id);
       if (!appt) return;
       
-      const res = await fetch(`http://localhost:3000/api/appointments/${id}`, {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/appointments/${id}`, {
         method: 'PUT',
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({
@@ -397,7 +397,7 @@ const Agenda = () => {
         return;
       }
 
-      const res = await fetch('http://localhost:3000/api/appointments/checkout', {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + '/api/appointments/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({

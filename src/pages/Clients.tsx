@@ -73,7 +73,7 @@ const Clients = () => {
       const token = localStorage.getItem("noxus_token");
       if (!token) return;
 
-      const res = await fetch("http://localhost:3000/api/clients", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/clients", {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (!res.ok) throw new Error("Erro ao buscar clientes");
@@ -131,7 +131,7 @@ const Clients = () => {
   const fetchClientAnamnesis = async (clientId: string) => {
     try {
       setLoadingAnamnesis(true);
-      const res = await fetch(`http://localhost:3000/api/anamnesis/${clientId}`);
+      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/anamnesis/${clientId}`);
       const data = await res.json();
       
       if (res.ok && data.anamnesis) {
@@ -166,7 +166,7 @@ const Clients = () => {
     try {
       setLoadingSessions(true);
       const token = localStorage.getItem("noxus_token");
-      const res = await fetch(`http://localhost:3000/api/appointments/client/${clientId}`, {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/appointments/client/${clientId}`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (!res.ok) throw new Error("Erro");
@@ -183,7 +183,7 @@ const Clients = () => {
     try {
       setLoadingReferrals(true);
       const token = localStorage.getItem("noxus_token");
-      const res = await fetch(`http://localhost:3000/api/clients/${clientId}/referrals`, {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/clients/${clientId}/referrals`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (!res.ok) throw new Error("Erro");
@@ -332,7 +332,7 @@ const Clients = () => {
         return;
       }
 
-      const res = await fetch("http://localhost:3000/api/clients", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/clients", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

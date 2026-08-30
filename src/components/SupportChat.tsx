@@ -40,7 +40,7 @@ export function SupportChat() {
         if (!token) return;
 
         try {
-            const res = await fetch("http://localhost:3000/api/support", {
+            const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/support", {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             if (res.ok) {
@@ -80,7 +80,7 @@ export function SupportChat() {
         if (!token) return;
 
         try {
-            const res = await fetch("http://localhost:3000/api/support", {
+            const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/support", {
                 method: "POST",
                 headers: { 
                     "Content-Type": "application/json",

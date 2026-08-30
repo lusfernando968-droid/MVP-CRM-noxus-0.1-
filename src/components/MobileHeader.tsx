@@ -44,7 +44,7 @@ export function MobileHeader() {
         const token = localStorage.getItem("noxus_token");
         if (!token) return;
 
-        const res = await fetch("http://localhost:3000/api/me", {
+        const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/me", {
           headers: { "Authorization": `Bearer ${token}` }
         });
         
@@ -67,7 +67,7 @@ export function MobileHeader() {
     if (!token) return;
 
     try {
-      const res = await fetch("http://localhost:3000/api/support", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/support", {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (res.ok) {
@@ -113,7 +113,7 @@ export function MobileHeader() {
     if (!token) { setSending(false); return; }
 
     try {
-      const res = await fetch("http://localhost:3000/api/support", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/support", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
