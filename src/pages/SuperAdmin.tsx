@@ -209,28 +209,26 @@ export default function SuperAdmin() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-8 animate-in fade-in">
-      <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Shield className="text-primary" />
-          Painel Administrativo
-        </h1>
-        <p className="text-muted-foreground">Gerencie o cadastro, assinaturas e vendas do seu software para outros tatuadores.</p>
+    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8 animate-fade-in pb-24">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <ShieldAlert className="w-6 h-6 text-primary" /> Painel Administrativo
+          </h1>
+          <p className="text-muted-foreground text-sm">Gerencie o cadastro, assinaturas e vendas do seu software para outros tatuadores.</p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        
-        {/* Formulário de Cadastro do Cliente */}
-        <Card className="xl:col-span-1 shadow-lg border-primary/20 bg-card/50 backdrop-blur-sm">
-          <CardHeader className="bg-primary/5 rounded-t-xl border-b border-primary/10">
-            <CardTitle className="flex items-center gap-2 text-primary">
-              <Users className="w-5 h-5" /> Cadastrar Novo Cliente
-            </CardTitle>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        {/* Formulário de Cadastro de Venda */}
+        <Card className="shadow-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><UserPlus className="w-5 h-5" /> Cadastrar Novo Cliente</CardTitle>
             <CardDescription>Registre a venda da assinatura e gere a chave de acesso do tatuador.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-5 pt-6">
+          <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label className="flex items-center gap-2"><Users className="w-4 h-4 text-muted-foreground"/> Nome do Cliente</Label>
+              <Label className="flex items-center gap-2"><User className="w-4 h-4 text-muted-foreground"/> Nome do Cliente</Label>
               <Input 
                 placeholder="Ex: João Tatuador" 
                 value={newStudentName}
@@ -238,9 +236,9 @@ export default function SuperAdmin() {
                 className="bg-background/50"
               />
             </div>
-            
+
             <div className="space-y-2">
-              <Label className="flex items-center gap-2"><Smartphone className="w-4 h-4 text-muted-foreground"/> Telefone / WhatsApp</Label>
+              <Label className="flex items-center gap-2"><Phone className="w-4 h-4 text-muted-foreground"/> Telefone / WhatsApp</Label>
               <Input 
                 placeholder="(00) 00000-0000" 
                 value={newStudentPhone}
@@ -308,10 +306,10 @@ export default function SuperAdmin() {
                     <div className="flex flex-col gap-1">
                       <p className="font-semibold text-foreground">ID do Aluno: <span className="font-mono text-xs text-muted-foreground ml-1 bg-background px-2 py-0.5 rounded">{sub.user_id.substring(0,8)}</span></p>
                       <p className={`text-sm flex items-center gap-1.5 font-medium ${new Date(sub.expires_at) < new Date() ? 'text-destructive' : 'text-success'}`}>
-                        <Clock className="w-4 h-4" /> Vence em: {new Date(sub.expires_at).toLocaleDateString()}
+                        <Clock className="w-4 h-4" /> Vence em: {new Date(sub.expires_at).toLocaleDateString('pt-BR')}
                       </p>
                     </div>
-                    <Button size="sm" variant="outline" className="hover:bg-primary hover:text-primary-foreground transition-colors" onClick={() => renewSubscription(sub.id, sub.expires_at)}>
+                    <Button size="sm" variant="outline" className="hover:bg-primary hover:text-primary-foreground transition-colors font-bold" onClick={() => renewSubscription(sub.id, sub.expires_at)}>
                       +30 Dias
                     </Button>
                   </div>
@@ -334,7 +332,6 @@ export default function SuperAdmin() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                 {codes.map((code, idx) => (
                   <div key={code.id || idx} className="p-5 border rounded-xl flex flex-col gap-3 bg-card relative overflow-hidden group hover:border-primary/50 transition-colors">
-                    {/* Tarja colorida lateral */}
                     <div className={`absolute left-0 top-0 bottom-0 w-1 ${code.status === 'used' ? 'bg-success' : 'bg-primary'}`} />
                     
                     <div className="flex justify-between items-start pl-2">
@@ -378,6 +375,32 @@ export default function SuperAdmin() {
                           <span className="font-medium">{code.phone}</span>
                         </div>
                       )}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 mt-2 pt-3 border-t border-border/40 pl-2">
+                      {code.status !== 'used' ? (
+                        <Button
+                          size="sm"
+                          onClick={() => handleConfirmCode(code.id)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold w-full"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
+                          Confirmar Pagamento (+30 Dias)
+                        </Button>
+                      ) : (
+                        <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
+                          <CheckCircle className="w-3.5 h-3.5" /> Pagamento Confirmado
+                        </span>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDeleteCode(code.id)}
+                        className="text-destructive hover:bg-destructive/10 text-xs px-2"
+                        title="Excluir cadastro"
+                      >
+                        Excluir
+                      </Button>
                     </div>
                   </div>
                 ))}

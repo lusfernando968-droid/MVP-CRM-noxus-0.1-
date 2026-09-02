@@ -945,6 +945,113 @@ app.get('/api/admin/codes', authenticate, requireAdmin, async (req: any, res: an
   }
 });
 
+app.put('/api/admin/codes/:id/confirm', authenticate, requireAdmin, async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    const code = await prisma.accessCode.update({
+      where: { id },
+      data: { status: 'used' }
+    });
+
+    if (code.clientEmail || code.clientName) {
+      const user = await prisma.user.findFirst({
+        where: {
+          OR: [
+            code.clientEmail ? { email: code.clientEmail } : {},
+            code.clientName ? { name: code.clientName } : {}
+          ]
+        }
+      });
+
+      if (user) {
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 30);
+        
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { isActive: true }
+        });
+
+        await prisma.subscription.create({
+          data: {
+            userId: user.id,
+            expiresAt
+          }
+        });
+      }
+    }
+    res.json({ success: true, code });
+  } catch (error) {
+    console.error("Error confirming code:", error);
+    res.status(500).json({ error: "Erro ao confirmar código" });
+  }
+});
+
+app.delete('/api/admin/codes/:id', authenticate, requireAdmin, async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    await prisma.accessCode.delete({ where: { id } });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao excluir código" });
+  }
+});
+
+app.put('/api/admin/users/:id/renew', authenticate, requireAdmin, async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    const days = Number(req.body.days) || 30;
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      include: {
+        subscriptions: { orderBy: { expiresAt: 'desc' }, take: 1 },
+        accessCodesUsed: true
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    const currentExpires = user.subscriptions[0]?.expiresAt;
+    const baseDate = (currentExpires && new Date(currentExpires) > new Date())
+      ? new Date(currentExpires)
+      : new Date();
+    
+    const newExpiresAt = new Date(baseDate);
+    newExpiresAt.setDate(newExpiresAt.getDate() + days);
+
+    const sub = await prisma.subscription.create({
+      data: {
+        userId: id,
+        expiresAt: newExpiresAt
+      }
+    });
+
+    await prisma.user.update({
+      where: { id },
+      data: { isActive: true }
+    });
+
+    if (user.accessCodesUsed.length > 0) {
+      await prisma.accessCode.updateMany({
+        where: { id: { in: user.accessCodesUsed.map(c => c.id) } },
+        data: { status: 'used' }
+      });
+    }
+
+    res.json({
+      success: true,
+      expires_at: newExpiresAt,
+      is_active: true
+    });
+  } catch (error) {
+    console.error("Error renewing user:", error);
+    res.status(500).json({ error: "Erro ao renovar usuário" });
+  }
+});
+
 app.get('/api/admin/subscriptions', authenticate, requireAdmin, async (req: any, res: any) => {
   try {
     const subs = await prisma.subscription.findMany({

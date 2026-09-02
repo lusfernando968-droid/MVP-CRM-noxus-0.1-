@@ -20,6 +20,8 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
+import { Button } from "@/components/ui/button";
+
 interface UserAccount {
     id: string;
     nome: string | null;
@@ -82,6 +84,30 @@ export default function Users() {
             toast.success(`Usuário ${!currentStatus ? 'ativado' : 'desativado'} com sucesso!`);
         } catch (error: any) {
             toast.error("Erro ao atualizar status: " + error.message);
+        } finally {
+            setUpdatingId(null);
+        }
+    };
+
+    const handleRenewUser = async (userId: string) => {
+        setUpdatingId(userId);
+        const token = localStorage.getItem("noxus_token");
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/admin/users/${userId}/renew`, {
+                method: "PUT",
+                headers: { 
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({ days: 30 })
+            });
+
+            if (!res.ok) throw new Error("Falha ao renovar");
+            
+            toast.success("Pagamento confirmado! Acesso liberado por +30 dias.");
+            fetchUsers();
+        } catch (error: any) {
+            toast.error("Erro ao renovar acesso: " + error.message);
         } finally {
             setUpdatingId(null);
         }
@@ -166,7 +192,7 @@ export default function Users() {
                                                 </div>
                                             </div>
                                             
-                                            <div className="flex items-center justify-between">
+                                            <div className="flex items-center justify-between pt-2 border-t border-border/30">
                                                 <div className="flex flex-col gap-1">
                                                     <Badge variant={user.role !== 'USER' ? 'default' : 'secondary'} className="rounded-md font-medium w-fit text-[10px]">
                                                         {user.role !== 'USER' ? (
@@ -185,15 +211,14 @@ export default function Users() {
                                                     )}
                                                 </div>
                                                 <div className="flex flex-col items-end gap-2">
-                                                    {user.is_active ? (
-                                                        <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 px-2 py-0.5 rounded-full flex w-fit items-center gap-1 text-[10px]">
-                                                            <CheckCircle2 className="h-3 w-3" /> Ativo
-                                                        </Badge>
-                                                    ) : (
-                                                        <Badge className="bg-red-500/10 text-red-500 border-red-500/20 px-2 py-0.5 rounded-full flex w-fit items-center gap-1 text-[10px]">
-                                                            <XCircle className="h-3 w-3" /> Inativo
-                                                        </Badge>
-                                                    )}
+                                                    <Button
+                                                        size="sm"
+                                                        onClick={() => handleRenewUser(user.id)}
+                                                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] h-7 px-2.5 shadow-xs"
+                                                    >
+                                                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                                                        Confirmar (+30d)
+                                                    </Button>
                                                     <div className="flex items-center gap-2">
                                                         {updatingId === user.id ? (
                                                             <Loader2 className="h-4 w-4 animate-spin text-primary" />
@@ -302,14 +327,24 @@ export default function Users() {
                                                                 <Loader2 className="h-5 w-5 animate-spin text-primary" />
                                                             ) : (
                                                                 <>
-                                                                    <span className="text-xs font-medium text-muted-foreground mr-2">
-                                                                        {user.is_active ? "Desativar" : "Ativar"}
-                                                                    </span>
-                                                                    <Switch
-                                                                        checked={user.is_active}
-                                                                        onCheckedChange={() => toggleUserStatus(user.id, !!user.is_active)}
-                                                                        className="data-[state=checked]:bg-emerald-500"
-                                                                    />
+                                                                    <Button
+                                                                        size="sm"
+                                                                        onClick={() => handleRenewUser(user.id)}
+                                                                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8 shadow-xs"
+                                                                    >
+                                                                        <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                                                                        Confirmar (+30d)
+                                                                    </Button>
+                                                                    <div className="flex items-center gap-1.5 ml-1 border-l border-border/40 pl-3">
+                                                                        <span className="text-xs font-medium text-muted-foreground">
+                                                                            {user.is_active ? "Ativo" : "Inativo"}
+                                                                        </span>
+                                                                        <Switch
+                                                                            checked={user.is_active}
+                                                                            onCheckedChange={() => toggleUserStatus(user.id, !!user.is_active)}
+                                                                            className="data-[state=checked]:bg-emerald-500"
+                                                                        />
+                                                                    </div>
                                                                 </>
                                                             )}
                                                         </div>
