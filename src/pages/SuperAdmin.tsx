@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Shield, Key, Users, Plus, CheckCircle, Clock, Smartphone, Mail, DollarSign, Calendar, CreditCard } from 'lucide-react';
+import { Shield, ShieldAlert, Key, Users, UserPlus, User, Plus, CheckCircle, Clock, Smartphone, Phone, Mail, DollarSign, Calendar, CreditCard, Trash2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Input } from '../components/ui/input';
