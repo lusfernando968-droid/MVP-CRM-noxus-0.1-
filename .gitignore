@@ -12,6 +12,17 @@ dist
 dist-ssr
 *.local
 
+# Environment & Credentials
+.env
+.env.*
+!.env.example
+
+# Temp & Executables
+cloudflared.exe
+*.db
+*.db-journal
+backend/temp-code.js
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

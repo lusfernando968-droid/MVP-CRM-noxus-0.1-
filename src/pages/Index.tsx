@@ -21,6 +21,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
+  BarChart,
+  Bar,
   AreaChart,
   Area,
   XAxis,
@@ -36,19 +38,28 @@ import {
 interface DashboardStats {
   sessionsToday: string;
   monthlyRevenue: string;
+  monthlyExpenses: string;
+  ticketMedio: string;
   activeClients: string;
-  avgTime: string;
+  totalWorkedTime: string;
+  avgWorkedTime: string;
   pendingReceivables: string;
   anamnesisCompleted: string;
   topDiscoverySource: string;
 }
 
 const Index = () => {
+  const [periodFilter, setPeriodFilter] = useState("month");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [statsData, setStatsData] = useState<DashboardStats>({
     sessionsToday: "0",
     monthlyRevenue: "R$ 0",
+    monthlyExpenses: "R$ 0",
+    ticketMedio: "R$ 0",
     activeClients: "0",
-    avgTime: "0h 00m",
+    totalWorkedTime: "0h 00m",
+    avgWorkedTime: "0h 00m",
     pendingReceivables: "R$ 0",
     anamnesisCompleted: "0",
     topDiscoverySource: "-",
@@ -56,6 +67,7 @@ const Index = () => {
   const [todayClients, setTodayClients] = useState<any[]>([]);
   const [recentPayments, setRecentPayments] = useState<any[]>([]);
   const [revenueChartData, setRevenueChartData] = useState<any[]>([]);
+  const [yearlyChartData, setYearlyChartData] = useState<any[]>([]);
   const [appointmentsStatusData, setAppointmentsStatusData] = useState<any[]>([]);
   const [pendingAnamnesisAlerts, setPendingAnamnesisAlerts] = useState<any[]>([]);
   const [tomorrowAppointments, setTomorrowAppointments] = useState<any[]>([]);
@@ -75,7 +87,12 @@ const Index = () => {
       const token = localStorage.getItem("noxus_token");
       if (!token) return;
 
-      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/dashboard", {
+      let url = `${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/dashboard?period=${periodFilter}`;
+      if (periodFilter === 'custom' && startDate && endDate) {
+        url += `&startDate=${startDate}&endDate=${endDate}`;
+      }
+
+      const res = await fetch(url, {
         headers: {
           "Authorization": `Bearer ${token}`
         }
@@ -85,12 +102,13 @@ const Index = () => {
       const data = await res.json();
 
       setStatsData(data.stats);
-      setRevenueChartData(data.revenueChartData);
-      setAppointmentsStatusData(data.appointmentsStatusData);
-      setPendingAnamnesisAlerts(data.pendingAnamnesisAlerts);
-      setTodayClients(data.todayClients);
-      setRecentPayments(data.recentPayments);
-      setTomorrowAppointments(data.tomorrowAppointments);
+      setRevenueChartData(data.revenueChartData || []);
+      setYearlyChartData(data.yearlyChartData || []);
+      setAppointmentsStatusData(data.appointmentsStatusData || []);
+      setPendingAnamnesisAlerts(data.pendingAnamnesisAlerts || []);
+      setTodayClients(data.todayClients || []);
+      setRecentPayments(data.recentPayments || []);
+      setTomorrowAppointments(data.tomorrowAppointments || []);
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -101,7 +119,7 @@ const Index = () => {
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [periodFilter, startDate, endDate]);
 
   const openCheckout = (appt: any) => {
     setSelectedCheckout(appt);
@@ -151,23 +169,51 @@ const Index = () => {
 
   const stats = [
     {
-      label: "Sessões Hoje",
-      value: statsData.sessionsToday,
-      icon: Calendar,
-      change: "+0 vs ontem", // Seria necessário query de ontem para ser dinâmico
+      label: "Faturamento Total",
+      value: statsData.monthlyRevenue,
+      icon: DollarSign,
+      change: "No período",
       trend: "up" as const,
     },
     {
-      label: "Faturamento do Mês",
-      value: statsData.monthlyRevenue,
-      icon: DollarSign,
-      change: "+0% vs mês anterior", // Seria necessário query do mês anterior para ser dinâmico
+      label: "Custo do Mês (Despesas)",
+      value: statsData.monthlyExpenses || "R$ 0",
+      icon: ArrowDownRight,
+      change: "Saídas",
+      trend: "down" as const,
+    },
+    {
+      label: "Ticket Médio",
+      value: statsData.ticketMedio || "R$ 0",
+      icon: TrendingUp,
+      change: "Média por sessão",
+      trend: "up" as const,
+    },
+    {
+      label: "Tempo Médio de Trabalho",
+      value: statsData.avgWorkedTime || "0h 00m",
+      icon: Clock,
+      change: "Média por sessão",
+      trend: "up" as const,
+    },
+    {
+      label: "Tempo Total Trabalhado",
+      value: statsData.totalWorkedTime || "0h 00m",
+      icon: Clock,
+      change: "No período",
+      trend: "up" as const,
+    },
+    {
+      label: "Sessões Hoje",
+      value: statsData.sessionsToday,
+      icon: Calendar,
+      change: "Hoje",
       trend: "up" as const,
     },
     {
       label: "A Receber",
       value: statsData.pendingReceivables,
-      icon: TrendingUp,
+      icon: DollarSign,
       change: "Agendado",
       trend: "down" as const,
     },
@@ -178,44 +224,50 @@ const Index = () => {
       change: "Total",
       trend: "up" as const,
     },
-    {
-      label: "Fichas Concluídas",
-      value: statsData.anamnesisCompleted,
-      icon: FileText,
-      change: "Total",
-      trend: "up" as const,
-    },
-    {
-      label: "Principal Origem",
-      value: statsData.topDiscoverySource,
-      icon: Users,
-      change: "Maior canal",
-      trend: "up" as const,
-    },
-    {
-      label: "Tempo Médio de Sessão",
-      value: statsData.avgTime,
-      icon: Clock,
-      change: "Geral",
-      trend: "down" as const,
-    },
-    {
-      label: "Ticket Médio",
-      value: statsData.monthlyRevenue === "R$ 0" ? "R$ 0" : `R$ ${Math.round(Number(statsData.monthlyRevenue.replace(/\D/g, '')) / 100 / (Number(statsData.sessionsToday) || 1)).toLocaleString('pt-BR')}`,
-      icon: DollarSign,
-      change: "Média",
-      trend: "up" as const,
-    },
   ];
 
   return (
     <>
-      <div className="page-header">
+      <div className="page-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="page-title">Dashboard</h1>
           <p className="page-subtitle">
-            Bem-vindo de volta! Aqui está o resumo do seu dia.
+            Bem-vindo de volta! Aqui está o resumo do seu estúdio.
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Select value={periodFilter} onValueChange={setPeriodFilter}>
+            <SelectTrigger className="w-[180px] bg-card">
+              <SelectValue placeholder="Selecione o período" />
+            </SelectTrigger>
+            <SelectContent className="bg-card text-foreground">
+              <SelectItem value="month">Mês Atual</SelectItem>
+              <SelectItem value="today">Hoje</SelectItem>
+              <SelectItem value="7days">Últimos 7 dias</SelectItem>
+              <SelectItem value="30days">Últimos 30 dias</SelectItem>
+              <SelectItem value="custom">Data Específica</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {periodFilter === 'custom' && (
+            <div className="flex items-center gap-2">
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-[140px] bg-card text-xs"
+                placeholder="Início"
+              />
+              <span className="text-xs text-muted-foreground font-bold">até</span>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-[140px] bg-card text-xs"
+                placeholder="Fim"
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -268,8 +320,8 @@ const Index = () => {
                   <span className="text-xs text-muted-foreground">Amanhã às {appt.time}</span>
                 </div>
                 <a
-                  href={`https://wa.me/55${appt.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
-                    `Olá ${appt.name}! Passando para confirmar seu horário amanhã, dia ${new Date(new Date().setDate(new Date().getDate() + 1)).toLocaleDateString('pt-BR')}, às ${appt.time}. Podemos confirmar?`
+                  href={`https://wa.me/55${(appt.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(
+                    `Olá ${appt.name || 'Cliente'}! Passando para confirmar seu horário amanhã, dia ${new Date(new Date().setDate(new Date().getDate() + 1)).toLocaleDateString('pt-BR')}, às ${appt.time}. Podemos confirmar?`
                   )}`}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -312,7 +364,7 @@ const Index = () => {
             </div>
             <div className="mt-2 md:mt-4">
               <p className="text-xl md:text-2xl font-bold text-foreground">
-                {loading ? "..." : stat.value}
+                {loading ? "..." : (stat.value || "-")}
               </p>
               <p className="text-xs md:text-sm text-muted-foreground mt-0.5 md:mt-1">{stat.label}</p>
             </div>
@@ -340,7 +392,7 @@ const Index = () => {
                 >
                   <div className="flex items-center gap-4">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent text-sm font-semibold text-primary">
-                      {client.name.charAt(0)}
+                      {(client.name || "C").charAt(0)}
                     </div>
                     <div>
                       <p className="text-sm font-medium text-foreground">
@@ -423,62 +475,99 @@ const Index = () => {
 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-        {/* Revenue Trend Chart */}
-        <div className="bg-card rounded-xl border shadow-sm p-6">
-          <h2 className="text-lg font-semibold text-foreground mb-4">Desempenho Financeiro (Últimos 7 dias)</h2>
-          <div className="h-[220px] lg:h-[280px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={revenueChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--success))" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="hsl(var(--success))" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--destructive))" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="hsl(var(--destructive))" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `R$${value}`} />
-                <RechartsTooltip
-                  formatter={(value: number, name: string) => {
-                    const label = name === 'income' ? 'Receita' : name === 'expense' ? 'Despesa' : 'Lucro';
-                    return [`R$ ${value}`, label];
-                  }}
-                  labelStyle={{ color: 'hsl(var(--foreground))' }}
-                  contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
-                />
-                <Area type="monotone" dataKey="income" stroke="hsl(var(--success))" strokeWidth={2} fillOpacity={1} fill="url(#colorIncome)" />
-                <Area type="monotone" dataKey="expense" stroke="hsl(var(--destructive))" strokeWidth={2} fillOpacity={1} fill="url(#colorExpense)" />
-                <Area type="monotone" dataKey="profit" stroke="hsl(var(--primary))" strokeWidth={2} fillOpacity={1} fill="url(#colorProfit)" />
-              </AreaChart>
-            </ResponsiveContainer>
+        {/* Revenue Trend Chart (Daily Bar Chart) */}
+        <div className="bg-card rounded-xl border shadow-sm p-6 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold text-foreground">Desempenho Financeiro (No Período)</h2>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-accent text-muted-foreground">Por dia</span>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">Receitas e despesas diárias do período selecionado</p>
+            <div className="h-[220px] lg:h-[260px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={revenueChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }} barGap={3}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.5} />
+                  <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(value) => `R$${value}`} />
+                  <RechartsTooltip
+                    formatter={(value: number, name: string) => {
+                      const label = name === 'income' ? 'Receita' : name === 'expense' ? 'Despesa' : 'Lucro';
+                      return [`R$ ${value}`, label];
+                    }}
+                    labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 'bold' }}
+                    contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  />
+                  <Bar dataKey="income" name="income" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                  <Bar dataKey="expense" name="expense" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-          <div className="flex items-center justify-center gap-6 mt-4">
+          <div className="flex items-center justify-center gap-6 mt-4 pt-3 border-t">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-success" />
-              <span className="text-xs text-muted-foreground">Receita</span>
+              <div className="w-3 h-3 rounded-sm bg-success" />
+              <span className="text-xs font-semibold text-foreground">Receita</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-destructive" />
-              <span className="text-xs text-muted-foreground">Despesa</span>
+              <div className="w-3 h-3 rounded-sm bg-destructive" />
+              <span className="text-xs font-semibold text-foreground">Despesa</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Yearly Revenue Trend Chart (12 Months Line Chart) */}
+        <div className="bg-card rounded-xl border shadow-sm p-6 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold text-foreground">Desempenho Financeiro Anual (12 Meses)</h2>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-accent text-muted-foreground">Por mês</span>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">Evolução do faturamento e lucro líquido mês a mês</p>
+            <div className="h-[220px] lg:h-[260px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={yearlyChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorYearIncome" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--success))" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(var(--success))" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="colorYearProfit" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.5} />
+                  <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(value) => `R$${value}`} />
+                  <RechartsTooltip
+                    formatter={(value: number, name: string) => {
+                      const label = name === 'income' ? 'Receita Mensal' : name === 'profit' ? 'Lucro Líquido' : 'Despesa';
+                      return [`R$ ${value}`, label];
+                    }}
+                    labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 'bold' }}
+                    contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  />
+                  <Area type="monotone" dataKey="income" stroke="hsl(var(--success))" strokeWidth={2.5} fillOpacity={1} fill="url(#colorYearIncome)" />
+                  <Area type="monotone" dataKey="profit" stroke="hsl(var(--primary))" strokeWidth={2.5} fillOpacity={1} fill="url(#colorYearProfit)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div className="flex items-center justify-center gap-6 mt-4 pt-3 border-t">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-success" />
+              <span className="text-xs font-semibold text-foreground">Receita Mensal</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-primary" />
-              <span className="text-xs text-muted-foreground">Lucro</span>
+              <span className="text-xs font-semibold text-foreground">Lucro Líquido</span>
             </div>
           </div>
         </div>
 
         {/* Appointments Status Chart */}
-        <div className="bg-card rounded-xl border shadow-sm p-6 relative">
-          <h2 className="text-lg font-semibold text-foreground mb-4">Status de Agendamentos (Mês Atual)</h2>
+        <div className="bg-card rounded-xl border shadow-sm p-6 relative lg:col-span-2">
+          <h2 className="text-lg font-semibold text-foreground mb-4">Status de Agendamentos no Período</h2>
           <div className="h-[220px] lg:h-[280px] flex justify-center items-center">
             {appointmentsStatusData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -506,7 +595,7 @@ const Index = () => {
             ) : (
               <div className="flex flex-col items-center text-muted-foreground gap-2">
                 <Calendar className="h-8 w-8 opacity-20" />
-                <p>Sem dados no mês atual</p>
+                <p>Sem dados no período selecionado</p>
               </div>
             )}
 

@@ -177,6 +177,46 @@ app.get('/api/dashboard', authenticate, async (req: any, res: any) => {
     const tomorrow = tomorrowDate.toISOString().split('T')[0];
     const currentMonth = now.toISOString().substring(0, 7); // YYYY-MM
 
+    // Query filters
+    const period = (req.query.period as string) || 'month';
+    const customDate = req.query.date as string;
+    const startDate = req.query.startDate as string;
+    const endDate = req.query.endDate as string;
+
+    let startDateStr = '';
+    let endDateStr = '';
+
+    if (period === 'today') {
+      startDateStr = today;
+      endDateStr = today;
+    } else if (period === '7days') {
+      const d = new Date(now);
+      d.setDate(d.getDate() - 6);
+      startDateStr = d.toISOString().split('T')[0];
+      endDateStr = today;
+    } else if (period === '30days') {
+      const d = new Date(now);
+      d.setDate(d.getDate() - 29);
+      startDateStr = d.toISOString().split('T')[0];
+      endDateStr = today;
+    } else if (period === 'custom') {
+      if (startDate && endDate) {
+        startDateStr = startDate;
+        endDateStr = endDate;
+      } else if (customDate) {
+        startDateStr = customDate;
+        endDateStr = customDate;
+      } else {
+        startDateStr = `${currentMonth}-01`;
+        endDateStr = today;
+      }
+    } else {
+      // Default: Month (Mês Atual)
+      startDateStr = `${currentMonth}-01`;
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      endDateStr = `${currentMonth}-${String(lastDay).padStart(2, '0')}`;
+    }
+
     // Appointments (Today and Tomorrow)
     const allAppointments = await prisma.appointment.findMany({
       where: { userId },
@@ -189,6 +229,7 @@ app.get('/api/dashboard', authenticate, async (req: any, res: any) => {
       .map(a => ({
         id: a.id,
         name: a.client?.name || "Cliente",
+        phone: a.client?.phone || "",
         time: a.startTime.substring(0,5),
         status: a.status,
         value: a.value,
@@ -201,6 +242,7 @@ app.get('/api/dashboard', authenticate, async (req: any, res: any) => {
       .map(a => ({
         id: a.id,
         name: a.client?.name || "Cliente",
+        phone: a.client?.phone || "",
         time: a.startTime.substring(0,5),
         type: a.status === 'Apenas Consulta' ? 'Consulta' : 'Sessão'
       }));
@@ -231,34 +273,114 @@ app.get('/api/dashboard', authenticate, async (req: any, res: any) => {
         status: t.status
       }));
 
-    const monthlyRevenue = transactions
-      .filter(t => t.type === 'entrada' && t.date.startsWith(currentMonth))
+    // Revenue and Expenses in selected period (transactions OR appointment values)
+    const txRevenue = transactions
+      .filter(t => t.type === 'entrada' && t.date >= startDateStr && t.date <= endDateStr)
       .reduce((acc, curr) => acc + curr.value, 0);
 
-    // Chart Data (Revenue by last 7 days)
+    const totalExpenses = transactions
+      .filter(t => t.type === 'saida' && t.date >= startDateStr && t.date <= endDateStr)
+      .reduce((acc, curr) => acc + curr.value, 0);
+
+    const apptRevenue = allAppointments
+      .filter(a => a.date >= startDateStr && a.date <= endDateStr && a.status !== 'Cancelado')
+      .reduce((acc, a) => acc + (a.value || 0), 0);
+
+    const totalRevenue = Math.max(txRevenue, apptRevenue);
+
+    // Ticket Médio (Average Session Value in period)
+    const periodAppointments = allAppointments.filter(
+      a => a.date >= startDateStr && a.date <= endDateStr && a.status !== 'Cancelado' && (a.value || 0) > 0
+    );
+    const sumApptValue = periodAppointments.reduce((acc, a) => acc + (a.value || 0), 0);
+    const ticketMedioVal = periodAppointments.length > 0 ? Math.round(sumApptValue / periodAppointments.length) : 0;
+
+    // Tempo Total e Tempo Médio de Trabalho no período (in hours/minutes)
+    let periodTotalMins = 0;
+    let validApptCount = 0;
+    allAppointments
+      .filter(a => a.date >= startDateStr && a.date <= endDateStr && a.startTime && a.endTime && a.status !== 'Cancelado')
+      .forEach(a => {
+        const [sh, sm] = a.startTime.split(':').map(Number);
+        const [eh, em] = a.endTime.split(':').map(Number);
+        let startMins = sh * 60 + sm;
+        let endMins = eh * 60 + em;
+        if (endMins < startMins) endMins += 24 * 60;
+        periodTotalMins += (endMins - startMins);
+        validApptCount++;
+      });
+    
+    const totalHours = Math.floor(periodTotalMins / 60);
+    const totalMins = periodTotalMins % 60;
+    const totalWorkedTime = `${totalHours}h ${String(totalMins).padStart(2, '0')}m`;
+
+    const avgMinsVal = validApptCount > 0 ? Math.floor(periodTotalMins / validApptCount) : 0;
+    const avgWorkedTime = `${Math.floor(avgMinsVal / 60)}h ${String(avgMinsVal % 60).padStart(2, '0')}m`;
+
+    // 1. Chart Data do Período/Mês (Revenue por dia no período selecionado)
     const revenueChartData = [];
-    const DAY_NAMES = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const dayStr = d.toISOString().split('T')[0];
-      const dayName = DAY_NAMES[d.getDay()];
-      
+    const startObj = new Date(startDateStr + 'T00:00:00');
+    const endObj = new Date(endDateStr + 'T23:59:59');
+
+    let curr = new Date(startObj);
+    // Limitar para no máximo 31 dias no gráfico diário
+    const dayDiff = Math.ceil((endObj.getTime() - startObj.getTime()) / (1000 * 3600 * 24));
+    const stepDays = dayDiff > 31 ? Math.ceil(dayDiff / 30) : 1;
+
+    while (curr <= endObj) {
+      const dayStr = curr.toISOString().split('T')[0];
+      const dayNum = String(curr.getDate()).padStart(2, '0');
+      const monthNum = String(curr.getMonth() + 1).padStart(2, '0');
+      const dayLabel = `${dayNum}/${monthNum}`;
+
       const dayTxs = transactions.filter(t => t.date === dayStr);
-      const income = dayTxs.filter(t => t.type === 'entrada').reduce((acc, t) => acc + t.value, 0);
+      const txInc = dayTxs.filter(t => t.type === 'entrada').reduce((acc, t) => acc + t.value, 0);
       const expense = dayTxs.filter(t => t.type === 'saida').reduce((acc, t) => acc + t.value, 0);
-      
+
+      const dayAppts = allAppointments.filter(a => a.date === dayStr && a.status !== 'Cancelado');
+      const apptInc = dayAppts.reduce((acc, a) => acc + (a.value || 0), 0);
+
+      const income = Math.max(txInc, apptInc);
+
       revenueChartData.push({
-        date: dayName,
+        date: dayLabel,
+        income,
+        expense,
+        profit: income - expense
+      });
+
+      curr.setDate(curr.getDate() + stepDays);
+    }
+
+    // 2. Chart Data Anual (Desempenho dos últimos 12 meses)
+    const yearlyChartData = [];
+    const MONTH_NAMES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthStr = d.toISOString().substring(0, 7); // YYYY-MM
+      const monthLabel = `${MONTH_NAMES[d.getMonth()]}/${String(d.getFullYear()).substring(2)}`;
+
+      const monthTxs = transactions.filter(t => t.date && t.date.startsWith(monthStr));
+      const txInc = monthTxs.filter(t => t.type === 'entrada').reduce((acc, t) => acc + t.value, 0);
+      const expense = monthTxs.filter(t => t.type === 'saida').reduce((acc, t) => acc + t.value, 0);
+
+      const monthAppts = allAppointments.filter(a => a.date && a.date.startsWith(monthStr) && a.status !== 'Cancelado');
+      const apptInc = monthAppts.reduce((acc, a) => acc + (a.value || 0), 0);
+
+      const income = Math.max(txInc, apptInc);
+
+      yearlyChartData.push({
+        month: monthLabel,
         income,
         expense,
         profit: income - expense
       });
     }
 
-    // Appointments Status Data
+    // Appointments Status Data in selected period
     let concluido = 0, agendado = 0, cancelado = 0;
-    allAppointments.filter(a => a.date.startsWith(currentMonth)).forEach(a => {
+    allAppointments.filter(a => a.date >= startDateStr && a.date <= endDateStr).forEach(a => {
       if (a.status === 'Concluído') concluido++;
       else if (a.status === 'Cancelado') cancelado++;
       else agendado++;
@@ -280,28 +402,15 @@ app.get('/api/dashboard', authenticate, async (req: any, res: any) => {
       }
     });
 
-    let totalDuration = 0;
-    let completedCount = 0;
-    allAppointments.forEach(a => {
-       if (a.status === 'Concluído' && a.startTime && a.endTime) {
-         const [sh, sm] = a.startTime.split(':').map(Number);
-         const [eh, em] = a.endTime.split(':').map(Number);
-         let startMins = sh * 60 + sm;
-         let endMins = eh * 60 + em;
-         if (endMins < startMins) endMins += 24 * 60; // crossed midnight
-         totalDuration += (endMins - startMins);
-         completedCount++;
-       }
-    });
-    let avgMins = completedCount > 0 ? Math.floor(totalDuration / completedCount) : 0;
-    const avgTime = `${Math.floor(avgMins / 60)}h ${String(avgMins % 60).padStart(2, '0')}m`;
-
     res.json({
       stats: {
         sessionsToday: String(todayClients.length),
-        monthlyRevenue: `R$ ${monthlyRevenue.toLocaleString('pt-BR')}`,
+        monthlyRevenue: `R$ ${totalRevenue.toLocaleString('pt-BR')}`,
+        monthlyExpenses: `R$ ${totalExpenses.toLocaleString('pt-BR')}`,
+        ticketMedio: `R$ ${ticketMedioVal.toLocaleString('pt-BR')}`,
         activeClients: String(activeClients),
-        avgTime,
+        totalWorkedTime,
+        avgWorkedTime,
         pendingReceivables: `R$ ${pendingReceivables.toLocaleString('pt-BR')}`,
         anamnesisCompleted: String(anamnesisCompleted),
         topDiscoverySource: "Instagram"
@@ -309,6 +418,7 @@ app.get('/api/dashboard', authenticate, async (req: any, res: any) => {
       todayClients,
       recentPayments,
       revenueChartData,
+      yearlyChartData,
       appointmentsStatusData,
       pendingAnamnesisAlerts,
       tomorrowAppointments
@@ -385,17 +495,41 @@ app.post('/api/financial', authenticate, async (req: any, res: any) => {
   }
 });
 
+function calculateAge(birthDateStr?: string | null): number {
+  if (!birthDateStr) return 0;
+  const birth = new Date(birthDateStr);
+  if (isNaN(birth.getTime())) return 0;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+    age--;
+  }
+  return Math.max(0, age);
+}
+
 app.get('/api/clients', authenticate, async (req: any, res: any) => {
   try {
     const clients = await prisma.client.findMany({
       where: { userId: req.user.userId },
+      include: {
+        appointments: {
+          orderBy: { date: 'desc' }
+        }
+      },
       orderBy: { name: 'asc' }
     });
-    // Formatar os clientes igual o Supabase fazia
-    const formatted = clients.map((c: any) => ({
-      ...c,
-      referrer: null
-    }));
+    const formatted = clients.map((c: any) => {
+      const validAppts = (c.appointments || []).filter((a: any) => a.status !== 'Cancelado');
+      const latestAppt = validAppts[0];
+      return {
+        ...c,
+        age: c.birth_date ? calculateAge(c.birth_date) : (c.age || 0),
+        sessions: validAppts.length,
+        last_visit: latestAppt ? latestAppt.date : null,
+        referrer: null
+      };
+    });
     res.json(formatted);
   } catch (error) {
     console.error(error);
@@ -405,14 +539,17 @@ app.get('/api/clients', authenticate, async (req: any, res: any) => {
 
 app.post('/api/clients', authenticate, async (req: any, res: any) => {
   try {
-    const { name, phone, instagram, age, avatar_url, referred_by_id } = req.body;
+    const { name, phone, instagram, birth_date, age, avatar_url, referred_by_id } = req.body;
     
+    const computedAge = birth_date ? calculateAge(birth_date) : (Number(age) || 0);
+
     const client = await prisma.client.create({
       data: {
         name,
         phone,
         instagram,
-        age: Number(age) || 0,
+        birth_date,
+        age: computedAge,
         avatar_url,
         referred_by_id,
         userId: req.user.userId
@@ -423,6 +560,46 @@ app.post('/api/clients', authenticate, async (req: any, res: any) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Erro ao criar cliente" });
+  }
+});
+
+app.put('/api/clients/:id', authenticate, async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    const { name, phone, instagram, birth_date, age, avatar_url, referred_by_id } = req.body;
+
+    const computedAge = birth_date ? calculateAge(birth_date) : (Number(age) || 0);
+
+    const client = await prisma.client.update({
+      where: { id },
+      data: {
+        ...(name !== undefined && { name }),
+        ...(phone !== undefined && { phone }),
+        ...(instagram !== undefined && { instagram }),
+        ...(birth_date !== undefined && { birth_date }),
+        ...(computedAge !== undefined && { age: computedAge }),
+        ...(avatar_url !== undefined && { avatar_url }),
+        ...(referred_by_id !== undefined && { referred_by_id: referred_by_id === "none" ? null : referred_by_id })
+      }
+    });
+
+    res.json(client);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Erro ao atualizar cliente" });
+  }
+});
+
+app.delete('/api/clients/:id', authenticate, async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    await prisma.client.delete({
+      where: { id }
+    });
+    res.json({ message: "Cliente excluído com sucesso" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Erro ao excluir cliente" });
   }
 });
 
@@ -686,19 +863,23 @@ app.post('/api/anamnesis/:clientId', async (req: any, res: any) => {
     const { clientId } = req.params;
     const { formData, age } = req.body;
 
-    // Atualiza a idade do cliente
-    if (age) {
-      await prisma.client.update({
-        where: { id: clientId },
-        data: { age: Number(age) }
-      });
-    }
+    // Atualiza data de nascimento e idade do cliente automaticamente
+    const birthDate = formData?.birth_date || null;
+    const computedAge = birthDate ? calculateAge(birthDate) : (Number(age) || undefined);
+
+    await prisma.client.update({
+      where: { id: clientId },
+      data: {
+        ...(birthDate && { birth_date: birthDate }),
+        ...(computedAge !== undefined && { age: computedAge })
+      }
+    });
 
     // Cria a ficha
     const anamnesis = await prisma.anamnesis.create({
       data: {
         clientId,
-        discoverySource: formData.discovery_source,
+        discoverySource: formData.discovery_source || null,
         answers: JSON.stringify(formData)
       }
     });

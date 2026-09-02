@@ -14,7 +14,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, Plus, Check, User, Calendar, Clock, Banknote, CalendarDays, Activity, CheckCircle2, Trash2 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { ChevronLeft, ChevronRight, Plus, Check, User, Calendar, Clock, Banknote, CalendarDays, Activity, CheckCircle2, Trash2, Search, ChevronsUpDown } from "lucide-react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -45,6 +47,7 @@ interface Appointment {
 
 const Agenda = () => {
   const [modalOpen, setModalOpen] = useState(false);
+  const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const [deleteAlertOpen, setDeleteAlertOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
@@ -704,52 +707,21 @@ const Agenda = () => {
           <div className="space-y-4">
               <div className="flex flex-col gap-1.5">
                 <Label className="flex items-center gap-1.5"><User className="w-4 h-4 text-muted-foreground" /> Cliente</Label>
-                <Popover open={clientDropdownOpen} onOpenChange={setClientDropdownOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={clientDropdownOpen}
-                      className="w-full justify-between mt-1.5"
-                    >
-                      {formData.client_id
-                        ? clients.find((c) => c.id === formData.client_id)?.name
-                        : "Selecione um cliente..."}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-full p-0" style={{ zIndex: 9999 }}>
-                    <Command>
-                      <div className="flex items-center border-b px-3">
-                        <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-                        <CommandInput placeholder="Pesquisar cliente..." className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50" />
-                      </div>
-                      <CommandEmpty>Nenhum cliente encontrado.</CommandEmpty>
-                      <CommandGroup>
-                        <CommandList>
-                          {clients.map((c) => (
-                            <CommandItem
-                              key={c.id}
-                              value={c.name}
-                              onSelect={() => {
-                                setFormData({ ...formData, client_id: c.id });
-                                setClientDropdownOpen(false);
-                              }}
-                            >
-                              <Check
-                                className={cn(
-                                  "mr-2 h-4 w-4",
-                                  formData.client_id === c.id ? "opacity-100" : "opacity-0"
-                                )}
-                              />
-                              {c.name} {c.phone ? `(${c.phone})` : ""}
-                            </CommandItem>
-                          ))}
-                        </CommandList>
-                      </CommandGroup>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+                <Select
+                  value={formData.client_id}
+                  onValueChange={(val) => setFormData({ ...formData, client_id: val })}
+                >
+                  <SelectTrigger className="w-full mt-1.5">
+                    <SelectValue placeholder="Selecione um cliente..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card text-foreground" style={{ zIndex: 9999 }}>
+                    {clients.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name} {c.phone && c.phone !== "Não informado" ? `(${c.phone})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             <div className="grid grid-cols-2 gap-4">
               <div>

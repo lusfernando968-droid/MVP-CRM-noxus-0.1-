@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/lib/supabase";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search, Plus, Phone, Instagram, ChevronRight, Camera, User, CheckCircle2, AlertCircle, Pencil, Trash2 } from "lucide-react";
+import { Search, Plus, Phone, Instagram, ChevronRight, Camera, User, CheckCircle2, AlertCircle, Pencil, Trash2, Calendar, Clock, DollarSign, Users, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface Client {
@@ -15,12 +15,26 @@ interface Client {
   phone: string;
   instagram: string;
   age: number;
+  birth_date?: string;
   sessions: number;
   lastVisit: string;
   avatar_url?: string;
   referred_by_id?: string;
   referrer_name?: string;
 }
+
+const calculateAgeFromDate = (birthDateStr?: string) => {
+  if (!birthDateStr) return 0;
+  const birth = new Date(birthDateStr);
+  if (isNaN(birth.getTime())) return 0;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+    age--;
+  }
+  return Math.max(0, age);
+};
 
 const Clients = () => {
   const navigate = useNavigate();
@@ -51,7 +65,7 @@ const Clients = () => {
     name: "",
     phone: "",
     instagram: "",
-    age: "",
+    birth_date: "",
     avatar_url: "",
     referred_by_id: ""
   });
@@ -62,7 +76,7 @@ const Clients = () => {
     name: "",
     phone: "",
     instagram: "",
-    age: "",
+    birth_date: "",
     avatar_url: "",
     referred_by_id: ""
   });
@@ -84,7 +98,8 @@ const Clients = () => {
         name: c.name,
         phone: c.phone || "Não informado",
         instagram: c.instagram || "@",
-        age: c.age || 0,
+        birth_date: c.birth_date || "",
+        age: c.birth_date ? calculateAgeFromDate(c.birth_date) : (c.age || 0),
         sessions: c.sessions || 0,
         lastVisit: c.last_visit ? new Date(c.last_visit).toLocaleDateString() : "Sem visitas",
         avatar_url: c.avatar_url,
@@ -342,7 +357,7 @@ const Clients = () => {
           name: newClientData.name,
           phone: newClientData.phone,
           instagram: newClientData.instagram,
-          age: parseInt(newClientData.age) || 0,
+          birth_date: newClientData.birth_date,
           avatar_url: newClientData.avatar_url,
           referred_by_id: newClientData.referred_by_id === "none" ? null : (newClientData.referred_by_id || null)
         })
@@ -359,10 +374,11 @@ const Clients = () => {
         name: "",
         phone: "",
         instagram: "",
-        age: "",
+        birth_date: "",
         avatar_url: "",
         referred_by_id: ""
       });
+      toast.success("Cliente cadastrado com sucesso!");
     } catch (error: any) {
       console.error('Error creating client:', error);
       alert('Erro ao criar cliente: ' + (error?.message || 'Erro desconhecido.'));
@@ -376,7 +392,7 @@ const Clients = () => {
       name: selectedClient.name,
       phone: selectedClient.phone === "Não informado" ? "" : selectedClient.phone,
       instagram: selectedClient.instagram === "@" ? "" : selectedClient.instagram,
-      age: selectedClient.age ? selectedClient.age.toString() : "",
+      birth_date: selectedClient.birth_date || "",
       avatar_url: selectedClient.avatar_url || "",
       referred_by_id: selectedClient.referred_by_id || "none"
     });
@@ -390,22 +406,30 @@ const Clients = () => {
         return;
       }
 
+      const token = localStorage.getItem("noxus_token");
+      if (!token) return;
+
       setUploading(true);
-      const { error } = await supabase
-        .from('nx_clients')
-        .update({
+      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/clients/${editClientData.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
           name: editClientData.name,
           phone: editClientData.phone,
           instagram: editClientData.instagram,
-          age: parseInt(editClientData.age) || 0,
+          birth_date: editClientData.birth_date,
           referred_by_id: editClientData.referred_by_id === "none" ? null : (editClientData.referred_by_id || null)
         })
-        .eq('id', editClientData.id);
+      });
 
-      if (error) throw error;
+      if (!res.ok) throw new Error("Erro ao atualizar cliente");
 
       await fetchClients();
       setIsEditingClient(false);
+      toast.success("Cliente atualizado com sucesso!");
     } catch (error: any) {
       console.error('Error updating client:', error);
       alert('Erro ao atualizar cliente: ' + (error?.message || 'Erro desconhecido.'));
@@ -422,18 +446,22 @@ const Clients = () => {
 
     try {
       setLoading(true);
-      const { error } = await supabase
-        .from('nx_clients')
-        .delete()
-        .eq('id', selectedClient.id);
+      const token = localStorage.getItem("noxus_token");
+      if (!token) return;
 
-      if (error) throw error;
+      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/clients/${selectedClient.id}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+
+      if (!res.ok) throw new Error("Erro ao excluir cliente");
 
       setSelectedClient(null);
       await fetchClients();
+      toast.success("Cliente excluído com sucesso!");
     } catch (error: any) {
       console.error('Error deleting client:', error);
-      alert('Erro ao excluir cliente (Pode haver sessões, fichas de anamnese ou orçamentos associados a ele que precisam ser excluídos antes). erro: ' + (error?.message || 'Erro desconhecido.'));
+      alert('Erro ao excluir cliente (Pode haver sessões ou dados associados que precisam ser excluídos antes).');
     } finally {
       setLoading(false);
     }
@@ -544,43 +572,39 @@ const Clients = () => {
                       disabled={isUpdatingAvatar}
                     />
                   </div>
-                  <div className="flex-1">
-                    <div className="flex justify-between items-start">
+                  <div className="flex-1 min-w-0">
+                    {/* Top Row: Name, Age & Actions */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
-                        <h2 className="text-2xl font-bold text-foreground">{selectedClient.name}</h2>
-                        <p className="text-sm text-muted-foreground font-medium">{selectedClient.age} anos</p>
+                        <h2 className="text-2xl font-semibold text-foreground tracking-tight">{selectedClient.name}</h2>
+                        <p className="text-xs text-muted-foreground font-medium mt-0.5">
+                          {selectedClient.age > 0 ? `${selectedClient.age} anos` : 'Idade não informada'} 
+                          {selectedClient.birth_date ? ` • Nascido(a) em ${selectedClient.birth_date.split('-').reverse().join('/')}` : ''}
+                        </p>
                       </div>
-                      <div className="flex flex-col items-end gap-3">
-                        <div className="flex items-center gap-2">
-                          <Button variant="outline" size="sm" onClick={openEditModal} className="h-8 shadow-sm">
-                            <Pencil className="h-3 w-3 mr-1.5" />
-                            Editar
-                          </Button>
-                          <Button variant="destructive" size="sm" onClick={handleDeleteClient} className="h-8 shadow-sm">
-                            <Trash2 className="h-3 w-3 mr-1.5" />
-                            Excluir
-                          </Button>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Status de Indicação</p>
-                          {selectedClient.referrer_name ? (
-                            <p className="text-sm font-bold text-primary">Indicado por: {selectedClient.referrer_name}</p>
-                          ) : (
-                            <p className="text-sm font-medium text-muted-foreground italic">Veio por conta própria</p>
-                          )}
-                          <p className="text-xs font-semibold text-primary mt-0.5">Indicou {referredClients.length} {referredClients.length === 1 ? 'pessoa' : 'pessoas'}</p>
-                        </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button variant="outline" size="sm" onClick={openEditModal} className="h-8 text-xs font-medium border-border/60">
+                          <Pencil className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                          Editar
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={handleDeleteClient} className="h-8 text-xs font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10">
+                          <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                          Excluir
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4 mt-4">
+
+                    {/* Middle Row: Clean Minimal Badges */}
+                    <div className="flex flex-wrap items-center gap-2 mt-3">
                       {selectedClient.phone && selectedClient.phone !== "Não informado" && (
                         <a
                           href={`https://wa.me/55${selectedClient.phone.replace(/\D/g, '')}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-primary transition-colors hover:underline"
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/40 hover:bg-accent border border-border/40 text-xs font-medium text-foreground transition-colors"
                         >
-                          <Phone className="h-4 w-4 text-primary" /> {selectedClient.phone}
+                          <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                          {selectedClient.phone}
                         </a>
                       )}
 
@@ -589,33 +613,80 @@ const Clients = () => {
                           href={`https://instagram.com/${selectedClient.instagram.replace('@', '')}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-primary transition-colors hover:underline"
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/40 hover:bg-accent border border-border/40 text-xs font-medium text-foreground transition-colors"
                         >
-                          <Instagram className="h-4 w-4 text-primary" /> {selectedClient.instagram}
+                          <Instagram className="h-3.5 w-3.5 text-muted-foreground" />
+                          {selectedClient.instagram}
                         </a>
                       )}
+
+                      {clientAnamnesis?.emergency_contact && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/40 border border-border/40 text-xs font-medium text-foreground">
+                          <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                          Emergência: {clientAnamnesis.emergency_contact}
+                        </span>
+                      )}
+
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/40 border border-border/40 text-xs font-medium text-foreground">
+                        <Share2 className="h-3.5 w-3.5 text-muted-foreground" />
+                        {selectedClient.referrer_name ? (
+                          `Indicado por: ${selectedClient.referrer_name}`
+                        ) : clientAnamnesis?.discovery_source ? (
+                          `Origem: ${clientAnamnesis.discovery_source}`
+                        ) : (
+                          `Veio por conta própria`
+                        )}
+                      </span>
+
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/40 border border-border/40 text-xs font-medium text-foreground">
+                        <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                        Indicou {referredClients.length} {referredClients.length === 1 ? 'pessoa' : 'pessoas'}
+                      </span>
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-4 mt-8">
-                  <div className="rounded-xl bg-accent/30 p-4 text-center border border-accent/10">
-                    <p className="text-2xl font-bold text-foreground">{selectedClient.sessions}</p>
-                    <p className="text-xs text-muted-foreground font-bold mt-1 uppercase">Sessões</p>
+
+                {/* Bottom Row: Minimal Metric Stats Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6 pt-6 border-t border-border/40">
+                  <div className="rounded-xl bg-accent/20 p-4 text-center border border-border/40">
+                    <p className="text-2xl font-bold text-foreground tracking-tight">
+                      {clientSessions.length > 0
+                        ? clientSessions.filter(s => s.status !== 'Cancelado').length
+                        : (selectedClient.sessions || 0)}
+                    </p>
+                    <p className="text-xs font-semibold text-muted-foreground mt-1 uppercase tracking-wider">
+                      Sessões Realizadas
+                    </p>
                   </div>
-                  <div className="rounded-xl bg-accent/30 p-4 text-center border border-accent/10">
-                    <p className="text-2xl font-bold text-foreground">{selectedClient.lastVisit}</p>
-                    <p className="text-xs text-muted-foreground font-bold mt-1 uppercase">Última Visita</p>
+
+                  <div className="rounded-xl bg-accent/20 p-4 text-center border border-border/40">
+                    <p className="text-xl font-bold text-foreground tracking-tight">
+                      {(() => {
+                        const validSessions = clientSessions.filter(s => s.status !== 'Cancelado');
+                        if (validSessions.length === 0) return selectedClient.lastVisit || "Sem visitas";
+                        const sorted = [...validSessions].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+                        const last = sorted[0];
+                        if (!last || !last.date) return selectedClient.lastVisit || "Sem visitas";
+                        return last.date.includes('-') ? last.date.split('-').reverse().join('/') : last.date;
+                      })()}
+                    </p>
+                    <p className="text-xs font-semibold text-muted-foreground mt-1 uppercase tracking-wider">
+                      Última Visita
+                    </p>
                   </div>
-                  <div className="rounded-xl bg-accent/30 p-4 text-center border border-accent/10">
-                    <p className="text-2xl font-bold text-success">
+
+                  <div className="rounded-xl bg-accent/20 p-4 text-center border border-border/40">
+                    <p className="text-2xl font-bold text-foreground tracking-tight">
                       R$ {clientSessions
-                        .filter(s => s.status === 'Confirmado' || s.status === 'Concluído')
+                        .filter(s => s.status !== 'Cancelado')
                         .reduce((acc, curr) => {
                           const val = typeof curr.value === 'string' ? parseFloat(curr.value) : (curr.value || 0);
                           return acc + val;
                         }, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
-                    <p className="text-xs text-muted-foreground font-bold mt-1 uppercase">Faturamento</p>
+                    <p className="text-xs font-semibold text-muted-foreground mt-1 uppercase tracking-wider">
+                      Faturamento Total
+                    </p>
                   </div>
                 </div>
               </div>
@@ -627,28 +698,33 @@ const Clients = () => {
                   {loadingReferrals ? (
                     <div className="p-4 text-center text-sm text-muted-foreground font-medium">Carregando indicações...</div>
                   ) : referredClients.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {referredClients.map((client) => (
-                        <div key={client.id} className="bg-primary/10 text-primary border border-primary/20 px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2">
-                          <User className="h-4 w-4" />
-                          {client.name}
+                    referredClients.map((client: any) => (
+                      <div key={client.id} className="flex items-center justify-between p-3 rounded-lg border bg-accent/20">
+                        <div className="flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-full bg-accent flex items-center justify-center font-bold text-primary text-xs">
+                            {client.name.charAt(0)}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">{client.name}</p>
+                            <p className="text-xs text-muted-foreground">{client.phone || 'Sem telefone'}</p>
+                          </div>
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    ))
                   ) : (
-                    <div className="p-4 text-center text-sm text-muted-foreground font-medium">Este cliente ainda não indicou ninguém.</div>
+                    <p className="text-sm text-muted-foreground text-center py-4">Este cliente ainda não indicou ninguém.</p>
                   )}
                 </div>
               </div>
 
-              {/* Anamnesis Info */}
+              {/* Anamnesis & Contract */}
               <div className="bg-card rounded-xl border shadow-sm p-6 text-foreground">
-                <div className="flex justify-between items-center border-b pb-4 mb-4">
-                  <h3 className="text-lg font-bold text-foreground">Ficha de Anamnese e Contrato</h3>
+                <div className="flex items-center justify-between mb-6 pb-4 border-b">
+                  <h3 className="text-lg font-semibold text-foreground">Ficha de Anamnese e Contrato</h3>
                   {loadingAnamnesis ? (
                     <span className="text-sm text-muted-foreground">Carregando...</span>
                   ) : clientAnamnesis ? (
-                    <span className="bg-success text-success-foreground px-3 py-1 rounded-full text-xs font-bold shadow flex items-center gap-1">
+                    <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1">
                       <CheckCircle2 className="h-3 w-3" /> Preenchida
                     </span>
                   ) : (
@@ -848,8 +924,8 @@ const Clients = () => {
               <p className="text-xs text-muted-foreground font-medium italic">Adicionar foto do cliente</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2 space-y-2">
+            <div className="space-y-4">
+              <div className="space-y-2">
                 <Label htmlFor="name" className="text-sm font-bold">Nome Completo *</Label>
                 <Input
                   id="name"
@@ -861,7 +937,7 @@ const Clients = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="phone" className="text-sm font-bold">Telefone</Label>
+                <Label htmlFor="phone" className="text-sm font-bold">Telefone (WhatsApp) *</Label>
                 <Input
                   id="phone"
                   placeholder="(11) 99999-9999"
@@ -869,49 +945,7 @@ const Clients = () => {
                   onChange={(e) => setNewClientData({ ...newClientData, phone: e.target.value })}
                   className="bg-accent/20 border-accent/20 h-11"
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="age" className="text-sm font-bold">Idade</Label>
-                <Input
-                  id="age"
-                  type="number"
-                  placeholder="25"
-                  value={newClientData.age}
-                  onChange={(e) => setNewClientData({ ...newClientData, age: e.target.value })}
-                  className="bg-accent/20 border-accent/20 h-11"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="instagram" className="text-sm font-bold">Instagram</Label>
-                <Input
-                  id="instagram"
-                  placeholder="@usuario"
-                  value={newClientData.instagram}
-                  onChange={(e) => setNewClientData({ ...newClientData, instagram: e.target.value })}
-                  className="bg-accent/20 border-accent/20 h-11"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="referrer" className="text-sm font-bold">Indicação</Label>
-                <Select
-                  value={newClientData.referred_by_id}
-                  onValueChange={(val) => setNewClientData({ ...newClientData, referred_by_id: val })}
-                >
-                  <SelectTrigger className="bg-accent/20 border-accent/20 h-11">
-                    <SelectValue placeholder="Busque um cliente..." />
-                  </SelectTrigger>
-                  <SelectContent className="bg-card text-foreground">
-                    <SelectItem value="none" className="font-medium italic">Ninguém (Novidade)</SelectItem>
-                    {clients.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <p className="text-xs text-muted-foreground">Usado para enviar a ficha de anamnese e lembretes da sessão.</p>
               </div>
             </div>
           </div>
@@ -963,13 +997,12 @@ const Clients = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-age" className="text-sm font-bold">Idade</Label>
+                <Label htmlFor="edit-birth_date" className="text-sm font-bold">Data de Nascimento</Label>
                 <Input
-                  id="edit-age"
-                  type="number"
-                  placeholder="25"
-                  value={editClientData.age}
-                  onChange={(e) => setEditClientData({ ...editClientData, age: e.target.value })}
+                  id="edit-birth_date"
+                  type="date"
+                  value={editClientData.birth_date}
+                  onChange={(e) => setEditClientData({ ...editClientData, birth_date: e.target.value })}
                   className="bg-accent/20 border-accent/20 h-11"
                 />
               </div>

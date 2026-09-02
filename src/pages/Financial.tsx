@@ -22,6 +22,10 @@ const Financial = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [periodFilter, setPeriodFilter] = useState("month");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
   const currentDate = new Date();
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth());
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
@@ -118,13 +122,41 @@ const Financial = () => {
   };
 
   const filteredByDate = transactions.filter((t) => {
-    // t.date is formatted as "dd/mm/yyyy"
     const parts = t.date.split('/');
-    if (parts.length === 3) {
+    if (parts.length !== 3) return true;
+    
+    const formattedIso = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    const txDateObj = new Date(formattedIso + 'T00:00:00');
+
+    if (periodFilter === 'month') {
       const month = parseInt(parts[1], 10) - 1;
       const year = parseInt(parts[2], 10);
       return month === selectedMonth && year === selectedYear;
     }
+
+    const todayObj = new Date();
+    const todayStr = todayObj.toISOString().split('T')[0];
+
+    if (periodFilter === 'today') {
+      return formattedIso === todayStr;
+    }
+
+    if (periodFilter === '7days') {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(todayObj.getDate() - 7);
+      return txDateObj >= sevenDaysAgo && txDateObj <= todayObj;
+    }
+
+    if (periodFilter === '30days') {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(todayObj.getDate() - 30);
+      return txDateObj >= thirtyDaysAgo && txDateObj <= todayObj;
+    }
+
+    if (periodFilter === 'custom' && startDate && endDate) {
+      return formattedIso >= startDate && formattedIso <= endDate;
+    }
+
     return true;
   });
 
@@ -153,67 +185,98 @@ const Financial = () => {
 
   return (
     <>
-      <div className="page-header">
+      <div className="page-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="page-title">Financeiro</h1>
-          <p className="page-subtitle">Controle seu fluxo de caixa</p>
+          <p className="page-subtitle">Controle seu fluxo de caixa de forma simples</p>
         </div>
-        <Button onClick={() => setModalOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nova Transação
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={periodFilter} onValueChange={setPeriodFilter}>
+            <SelectTrigger className="w-[170px] bg-card text-xs">
+              <SelectValue placeholder="Período" />
+            </SelectTrigger>
+            <SelectContent className="bg-card text-foreground">
+              <SelectItem value="month">Navegar Mês</SelectItem>
+              <SelectItem value="today">Hoje</SelectItem>
+              <SelectItem value="7days">Últimos 7 dias</SelectItem>
+              <SelectItem value="30days">Últimos 30 dias</SelectItem>
+              <SelectItem value="custom">Data Específica</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {periodFilter === 'custom' && (
+            <div className="flex items-center gap-2">
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-[135px] bg-card text-xs"
+                placeholder="Início"
+              />
+              <span className="text-xs text-muted-foreground font-bold">até</span>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-[135px] bg-card text-xs"
+                placeholder="Fim"
+              />
+            </div>
+          )}
+
+          <Button onClick={() => setModalOpen(true)} size="sm" className="shadow-xs">
+            <Plus className="h-4 w-4 mr-1.5" />
+            Nova Transação
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="stat-card">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-success/10 p-2.5">
-              <ArrowUpRight className="h-5 w-5 text-success" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Entradas</p>
-              <p className="text-xl font-bold text-foreground">R$ {totalEntradas.toLocaleString("pt-BR")}</p>
-            </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-4">
+        <div className="rounded-xl bg-card border border-border/50 p-4 flex items-center justify-between shadow-xs">
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Entradas</p>
+            <p className="text-2xl font-bold text-foreground mt-1">R$ {totalEntradas.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+          </div>
+          <div className="rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 p-2.5 border border-emerald-500/20">
+            <ArrowUpRight className="h-5 w-5" />
           </div>
         </div>
-        <div className="stat-card">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-destructive/10 p-2.5">
-              <ArrowDownRight className="h-5 w-5 text-destructive" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Saídas</p>
-              <p className="text-xl font-bold text-foreground">R$ {totalSaidas.toLocaleString("pt-BR")}</p>
-            </div>
+
+        <div className="rounded-xl bg-card border border-border/50 p-4 flex items-center justify-between shadow-xs">
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Saídas</p>
+            <p className="text-2xl font-bold text-foreground mt-1">R$ {totalSaidas.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+          </div>
+          <div className="rounded-lg bg-destructive/10 text-destructive p-2.5 border border-destructive/20">
+            <ArrowDownRight className="h-5 w-5" />
           </div>
         </div>
-        <div className="stat-card">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-primary/10 p-2.5">
-              <DollarSign className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Lucro</p>
-              <p className={`text-xl font-bold ${saldo >= 0 ? "text-success" : "text-destructive"}`}>
-                R$ {saldo.toLocaleString("pt-BR")}
-              </p>
-            </div>
+
+        <div className="rounded-xl bg-card border border-border/50 p-4 flex items-center justify-between shadow-xs">
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Resultado (Lucro)</p>
+            <p className={`text-2xl font-bold mt-1 ${saldo >= 0 ? "text-foreground" : "text-destructive"}`}>
+              R$ {saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          </div>
+          <div className="rounded-lg bg-accent text-muted-foreground p-2.5 border border-border/40">
+            <DollarSign className="h-5 w-5" />
           </div>
         </div>
       </div>
 
       {/* Transactions Table */}
-      <div className="bg-card rounded-xl border shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 border-b">
-          <div className="flex items-center gap-1">
+      <div className="bg-card rounded-xl border border-border/50 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 border-b border-border/40">
+          <div className="inline-flex p-1 bg-accent/40 rounded-lg border border-border/40 gap-1">
             {(["all", "entrada", "saida"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === t
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${tab === t
+                  ? "bg-card text-foreground shadow-xs border border-border/40"
+                  : "text-muted-foreground hover:text-foreground"
                   }`}
               >
                 {t === "all" ? "Todas" : t === "entrada" ? "Entradas" : "Saídas"}
@@ -221,49 +284,53 @@ const Financial = () => {
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={handlePrevMonth}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-sm font-medium w-32 text-center">
-              {MONTHS[selectedMonth]} {selectedYear}
-            </span>
-            <Button variant="outline" size="icon" onClick={handleNextMonth}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+          {periodFilter === 'month' && (
+            <div className="flex items-center gap-1 bg-accent/30 p-1 rounded-lg border border-border/40">
+              <Button variant="ghost" size="icon" onClick={handlePrevMonth} className="h-7 w-7">
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+              <span className="text-xs font-semibold px-2 text-center min-w-[110px] text-foreground">
+                {MONTHS[selectedMonth]} {selectedYear}
+              </span>
+              <Button variant="ghost" size="icon" onClick={handleNextMonth} className="h-7 w-7">
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
         </div>
+
         <div className="overflow-x-auto">
           {loading ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">Carregando transações...</div>
-          ) : (
+            <div className="p-8 text-center text-xs font-medium text-muted-foreground">Carregando transações...</div>
+          ) : filtered.length > 0 ? (
             <table className="w-full">
               <thead>
-                <tr className="border-b bg-accent/30">
-                  <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Descrição</th>
-                  <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Data</th>
-                  <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tipo</th>
-                  <th className="text-right p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Valor</th>
-                  <th className="text-right p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
+                <tr className="border-b border-border/40 bg-accent/20">
+                  <th className="text-left p-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Descrição</th>
+                  <th className="text-left p-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Data</th>
+                  <th className="text-left p-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tipo</th>
+                  <th className="text-right p-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Valor</th>
+                  <th className="text-right p-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-border/40">
                 {filtered.map((t) => (
-                  <tr key={t.id} className="hover:bg-accent/30 transition-colors">
-                    <td className="p-4 text-sm text-foreground">{t.description}</td>
-                    <td className="p-4 text-sm text-muted-foreground">{t.date}</td>
-                    <td className="p-4">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${t.type === "entrada" ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
+                  <tr key={t.id} className="hover:bg-accent/20 transition-colors">
+                    <td className="p-3.5 text-sm font-medium text-foreground">{t.description}</td>
+                    <td className="p-3.5 text-xs font-medium text-muted-foreground">{t.date}</td>
+                    <td className="p-3.5">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${t.type === "entrada"
+                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                        : "bg-destructive/10 text-destructive border border-destructive/20"
                         }`}>
                         {t.type === "entrada" ? "Entrada" : "Saída"}
                       </span>
                     </td>
-                    <td className={`p-4 text-sm text-right font-medium ${t.type === "entrada" ? "text-success" : "text-destructive"
-                      }`}>
-                      {t.type === "entrada" ? "+" : "-"} R$ {t.value.toLocaleString("pt-BR")}
+                    <td className={`p-3.5 text-sm text-right font-semibold ${t.type === "entrada" ? "text-foreground" : "text-destructive"}`}>
+                      {t.type === "entrada" ? "+" : "-"} R$ {t.value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
-                    <td className="p-4 text-right">
-                      <span className="text-xs text-muted-foreground bg-accent px-2 py-1 rounded">
+                    <td className="p-3.5 text-right">
+                      <span className="text-xs font-medium text-muted-foreground bg-accent/40 border border-border/40 px-2.5 py-0.5 rounded-full">
                         {t.status}
                       </span>
                     </td>
@@ -271,6 +338,8 @@ const Financial = () => {
                 ))}
               </tbody>
             </table>
+          ) : (
+            <div className="p-12 text-center text-xs font-medium text-muted-foreground">Nenhuma transação encontrada no período.</div>
           )}
         </div>
       </div>

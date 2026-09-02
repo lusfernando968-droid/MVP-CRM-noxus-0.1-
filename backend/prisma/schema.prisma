@@ -1,10 +1,11 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -23,6 +24,8 @@ model User {
   accessCodesUsed AccessCode[] @relation("UsedBy")
   transactions   FinancialTransaction[]
   supportMessages SupportMessage[]
+
+  @@map("noxus_users")
 }
 
 model Client {
@@ -32,6 +35,7 @@ model Client {
   phone     String?
   instagram String?
   age       Int?
+  birth_date String?
   avatar_url String?
   referred_by_id String?
   createdAt DateTime @default(now())
@@ -41,6 +45,8 @@ model Client {
   
   appointments Appointment[]
   anamnesis    Anamnesis[]
+
+  @@map("noxus_clients")
 }
 
 model Appointment {
@@ -63,6 +69,8 @@ model Appointment {
   user      User     @relation(fields: [userId], references: [id])
 
   transactions FinancialTransaction[]
+
+  @@map("noxus_appointments")
 }
 
 model AccessCode {
@@ -80,6 +88,8 @@ model AccessCode {
 
   usedById  String?
   usedBy    User?    @relation("UsedBy", fields: [usedById], references: [id])
+
+  @@map("noxus_access_codes")
 }
 
 model Subscription {
@@ -89,6 +99,8 @@ model Subscription {
 
   userId    String
   user      User     @relation(fields: [userId], references: [id])
+
+  @@map("noxus_subscriptions")
 }
 
 model Anamnesis {
@@ -99,6 +111,8 @@ model Anamnesis {
 
   clientId  String
   client    Client   @relation(fields: [clientId], references: [id])
+
+  @@map("noxus_anamnesis")
 }
 
 model FinancialTransaction {
@@ -115,6 +129,8 @@ model FinancialTransaction {
 
   appointmentId String?
   appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+
+  @@map("noxus_financial_transactions")
 }
 
 model SupportMessage {
@@ -125,4 +141,6 @@ model SupportMessage {
   
   userId          String
   user            User     @relation(fields: [userId], references: [id])
+
+  @@map("noxus_support_messages")
 }
