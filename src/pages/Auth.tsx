@@ -9,6 +9,7 @@ import { Pen, Mail, Lock, User, ArrowRight, MessageCircle, Phone, FlaskConical, 
 import { useNavigate } from "react-router-dom";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useToast } from "@/components/ui/use-toast";
+import { API_URL } from "@/lib/api";
 
 const Auth = () => {
     const navigate = useNavigate();
@@ -23,20 +24,18 @@ const Auth = () => {
             if (token && !showPixModal) {
                 if (userStr) {
                     try {
-                        const user = JSON.parse(userStr);
-                        if (user.role === 'MASTER' || user.role === 'SUPERADMIN') {
-                            navigate("/admin-dashboard", { replace: true });
+                        const parsedUser = JSON.parse(userStr);
+                        if (parsedUser.role === 'SUPERADMIN' || parsedUser.role === 'MASTER') {
+                            navigate('/super-admin');
                             return;
                         }
-                    } catch (e) {
-                        console.error("Error parsing user from local storage", e);
-                    }
+                    } catch (e) {}
                 }
-                navigate("/dashboard", { replace: true });
+                navigate('/');
             }
         };
         checkExistingSession();
-    }, [navigate, showPixModal]);
+    }, [navigate]);
 
     // Login states
     const [loginAccessCode, setLoginAccessCode] = useState("");
@@ -46,7 +45,7 @@ const Auth = () => {
         
         setLoading(true);
         try {
-            const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/auth/login", {
+            const res = await fetch(`${API_URL}/api/auth/login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ accessCode: loginAccessCode })

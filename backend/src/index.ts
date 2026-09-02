@@ -1345,8 +1345,10 @@ app.get('/api/admin/stats', authenticate, requireAdmin, async (req: any, res: an
   }
 });
 
-// Mais rotas virão aqui...
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🔥 Backend rodando na porta ${PORT}`);
+  });
+}
 
-app.listen(PORT, () => {
-  console.log(`🔥 Backend rodando na porta ${PORT}`);
-});
+export default app;
