@@ -88,8 +88,9 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   try {
+    const cleanCode = accessCode.trim().toUpperCase();
     const codeRecord = await prisma.accessCode.findUnique({
-      where: { code: accessCode.trim().toUpperCase() },
+      where: { code: cleanCode },
       include: { usedBy: true }
     });
 
@@ -100,44 +101,59 @@ app.post('/api/auth/login', async (req, res) => {
     let user = codeRecord.usedBy;
 
     if (!user) {
-      if (codeRecord.status !== 'available') {
-        return res.status(401).json({ error: 'Este código já foi utilizado.' });
+      // Procurar se ja existe usuario com este email ou nome
+      if (codeRecord.clientEmail) {
+        user = await prisma.user.findUnique({ where: { email: codeRecord.clientEmail } });
       }
 
-      // Create new user for this code
-      const defaultEmail = codeRecord.clientEmail || `${codeRecord.code.toLowerCase()}@noxus.local`;
-      
-      // Hash a default password (e.g. the code itself)
-      const hashedPassword = await bcrypt.hash(codeRecord.code, 10);
+      if (!user) {
+        const defaultEmail = codeRecord.clientEmail || `${cleanCode.toLowerCase()}@noxus.local`;
+        const hashedPassword = await bcrypt.hash(cleanCode, 10);
 
-      user = await prisma.user.create({
-        data: {
-          email: defaultEmail,
-          password: hashedPassword,
-          name: codeRecord.clientName || 'Tatuador(a)',
-          whatsapp: codeRecord.clientPhone,
-          role: 'USER'
-        }
-      });
+        user = await prisma.user.create({
+          data: {
+            email: defaultEmail,
+            password: hashedPassword,
+            name: codeRecord.clientName || 'Tatuador(a)',
+            whatsapp: codeRecord.clientPhone,
+            role: 'USER',
+            isActive: true
+          }
+        });
+      }
 
-      // Update the access code
+      // Vincular o codigo ao usuario
       await prisma.accessCode.update({
         where: { id: codeRecord.id },
         data: { status: 'used', usedById: user.id }
       });
 
-      // Give 30 days subscription
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 30);
-      await prisma.subscription.create({
-        data: { userId: user.id, expiresAt }
+      // Garantir assinatura valida de 30 dias
+      const existingSub = await prisma.subscription.findFirst({
+        where: { userId: user.id, expiresAt: { gte: new Date() } }
       });
+
+      if (!existingSub) {
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 30);
+        await prisma.subscription.create({
+          data: { userId: user.id, expiresAt }
+        });
+      }
     }
 
-    // Generate token
+    if (!user.isActive) {
+      return res.status(403).json({ error: 'Sua conta está inativa ou vencida. Entre em contato com o suporte.' });
+    }
+
+    // Gerar token de acesso
     const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role }, token });
   } catch (error) {
+    console.error("Error during login:", error);
+    res.status(500).json({ error: 'Erro ao realizar login.' });
+  }
+});
     console.error('Login Error:', error);
     res.status(500).json({ error: 'Erro interno no servidor.' });
   }
