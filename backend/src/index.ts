@@ -179,6 +179,30 @@ app.get('/api/me', authenticate, async (req: any, res: any) => {
   res.json({ user });
 });
 
+app.put('/api/me', authenticate, async (req: any, res: any) => {
+  try {
+    const { name, whatsapp, email, newPassword } = req.body;
+    
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (whatsapp !== undefined) updateData.whatsapp = whatsapp;
+    if (email !== undefined) updateData.email = email;
+    if (newPassword) {
+      updateData.password = await bcrypt.hash(newPassword, 10);
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.userId },
+      data: updateData
+    });
+
+    res.json({ user: updatedUser });
+  } catch (error) {
+    console.error("Error updating profile:", error);
+    res.status(500).json({ error: "Erro ao atualizar perfil." });
+  }
+});
+
 app.get('/api/dashboard', authenticate, async (req: any, res: any) => {
   try {
     const userId = req.user.userId;
