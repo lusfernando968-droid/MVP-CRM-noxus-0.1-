@@ -5,19 +5,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { User, Mail, Shield, Camera, Phone, Lock } from "lucide-react";
+import { User, Shield, Phone, Key, Copy, CheckCircle2 } from "lucide-react";
 
 const Profile = () => {
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(true);
     const [fullName, setFullName] = useState("");
-    const [email, setEmail] = useState("");
     const [whatsapp, setWhatsapp] = useState("");
+    const [accessCode, setAccessCode] = useState("");
+    const [expiresAt, setExpiresAt] = useState("");
     const [joinedDate, setJoinedDate] = useState("");
-    const [avatarUrl, setAvatarUrl] = useState("");
-
-    // Security states
-    const [newPassword, setNewPassword] = useState("");
 
     useEffect(() => {
         fetchProfile();
@@ -40,9 +37,14 @@ const Profile = () => {
 
             if (user) {
                 setFullName(user.name || "");
-                setEmail(user.email || "");
                 setWhatsapp(user.whatsapp || "");
+                setAccessCode(user.access_code || "NOXUS-USER");
                 
+                if (user.expires_at) {
+                    const exp = new Date(user.expires_at);
+                    setExpiresAt(exp.toLocaleDateString('pt-BR'));
+                }
+
                 if (user.createdAt) {
                     const createdAt = new Date(user.createdAt);
                     setJoinedDate(createdAt.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }));
@@ -74,8 +76,7 @@ const Profile = () => {
                 },
                 body: JSON.stringify({
                     name: fullName,
-                    whatsapp: whatsapp,
-                    email: email
+                    whatsapp: whatsapp
                 })
             });
 
@@ -90,34 +91,10 @@ const Profile = () => {
         }
     };
 
-    const handleUpdatePassword = async () => {
-        if (!newPassword) {
-            toast.error("Digite a nova senha.");
-            return;
-        }
-
-        try {
-            setLoading(true);
-            const token = localStorage.getItem("noxus_token");
-            if (!token) return;
-
-            const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/me", {
-                method: "PUT",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
-                },
-                body: JSON.stringify({ newPassword })
-            });
-
-            if (!res.ok) throw new Error("Erro ao atualizar senha");
-
-            toast.success("Senha alterada com sucesso!");
-            setNewPassword("");
-        } catch (error: any) {
-            toast.error("Erro ao atualizar senha: " + error.message);
-        } finally {
-            setLoading(false);
+    const handleCopyAccessCode = () => {
+        if (accessCode) {
+            navigator.clipboard.writeText(accessCode);
+            toast.success("Chave de acesso copiada para a área de transferência!");
         }
     };
 
@@ -139,11 +116,11 @@ const Profile = () => {
             </div>
 
             <div className="grid gap-6 md:grid-cols-3">
+                {/* Left Card: Avatar & Status */}
                 <Card className="md:col-span-1 border-border/50 bg-card/50 backdrop-blur-xl rounded-2xl overflow-hidden shadow-sm border">
                     <CardHeader className="text-center">
                         <div className="mx-auto relative w-24 h-24 mb-4">
                             <Avatar className="w-24 h-24 border-4 border-background shadow-md">
-                                <AvatarImage src={avatarUrl} />
                                 <AvatarFallback className="text-2xl bg-primary text-primary-foreground font-bold">
                                     {fullName?.charAt(0) || "T"}
                                 </AvatarFallback>
@@ -157,16 +134,19 @@ const Profile = () => {
                             <Shield className="h-5 w-5 shrink-0" />
                             <div className="text-left">
                                 <p className="text-sm font-semibold">Plano Noxus Pro</p>
-                                <p className="text-xs opacity-90">Sua assinatura está ativa</p>
+                                <p className="text-xs opacity-90">
+                                    {expiresAt ? `Válido até ${expiresAt}` : "Assinatura Ativa"}
+                                </p>
                             </div>
                         </div>
                     </CardContent>
                 </Card>
 
+                {/* Right Card: Profile Info & Access Key */}
                 <Card className="md:col-span-2 border-border/50 bg-card/50 backdrop-blur-xl rounded-2xl overflow-hidden shadow-sm border">
                     <CardHeader>
                         <CardTitle className="text-lg">Dados do Perfil</CardTitle>
-                        <CardDescription>Atualize suas informações de contato e conta</CardDescription>
+                        <CardDescription>Atualize seu nome de trabalho e telefone</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="grid gap-4 sm:grid-cols-2">
@@ -183,20 +163,7 @@ const Profile = () => {
                                     />
                                 </div>
                             </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="perf-email">E-mail / Usuário</Label>
-                                <div className="relative group">
-                                    <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                                    <Input
-                                        id="perf-email"
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                        className="pl-10 rounded-xl"
-                                        placeholder="email@exemplo.com"
-                                    />
-                                </div>
-                            </div>
-                            <div className="space-y-2">
+                            <div className="space-y-2 sm:col-span-2">
                                 <Label htmlFor="perf-whatsapp">WhatsApp / Telefone</Label>
                                 <div className="relative group">
                                     <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -217,38 +184,38 @@ const Profile = () => {
                                 disabled={loading}
                                 className="rounded-xl px-6 font-semibold shadow-xs"
                             >
-                                {loading ? "Salvando..." : "Atualizar Perfil"}
+                                {loading ? "Salvando..." : "Salvar Alterações"}
                             </Button>
                         </div>
 
-                        <div className="space-y-4 pt-4 border-t border-border/50">
-                            <h3 className="text-md font-semibold text-foreground flex items-center gap-2">
-                                <Lock className="h-4 w-4 text-muted-foreground" /> Segurança da Conta
-                            </h3>
-                            <div className="space-y-4">
-                                <div className="space-y-2 max-w-md">
-                                    <Label htmlFor="new-pass">Nova Senha</Label>
-                                    <Input
-                                        id="new-pass"
-                                        type="password"
-                                        placeholder="Digite uma nova senha para sua conta"
-                                        value={newPassword}
-                                        onChange={(e) => setNewPassword(e.target.value)}
-                                        className="rounded-xl"
-                                    />
-                                </div>
+                        {/* Security / Access Code Section */}
+                        <div className="space-y-4 pt-6 border-t border-border/50">
+                            <div>
+                                <h3 className="text-md font-semibold text-foreground flex items-center gap-2">
+                                    <Key className="h-4 w-4 text-primary" /> Chave de Acesso da Conta
+                                </h3>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                    Esta é a sua chave exclusiva de acesso. Use-a para entrar no aplicativo em qualquer dispositivo.
+                                </p>
                             </div>
-                        </div>
 
-                        <div className="flex justify-end pt-2">
-                            <Button
-                                variant="outline"
-                                onClick={handleUpdatePassword}
-                                disabled={loading}
-                                className="rounded-xl px-6 font-semibold"
-                            >
-                                {loading ? "Atualizando..." : "Alterar Senha"}
-                            </Button>
+                            <div className="flex flex-col sm:flex-row items-center gap-3 bg-accent/30 p-4 rounded-xl border border-border/50">
+                                <div className="flex-1 min-w-0">
+                                    <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider block">Sua Chave Mestra</span>
+                                    <span className="font-mono text-xl font-bold tracking-wider text-foreground select-all">
+                                        {accessCode}
+                                    </span>
+                                </div>
+                                <Button
+                                    onClick={handleCopyAccessCode}
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full sm:w-auto h-9 font-semibold text-xs border-border/60"
+                                >
+                                    <Copy className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                                    Copiar Chave
+                                </Button>
+                            </div>
                         </div>
                     </CardContent>
                 </Card>

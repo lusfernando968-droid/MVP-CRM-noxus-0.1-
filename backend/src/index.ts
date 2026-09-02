@@ -175,8 +175,30 @@ const authenticate = (req: any, res: any, next: any) => {
 // ==========================================
 
 app.get('/api/me', authenticate, async (req: any, res: any) => {
-  const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
-  res.json({ user });
+  const user = await prisma.user.findUnique({
+    where: { id: req.user.userId },
+    include: {
+      accessCodesUsed: true,
+      subscriptions: { orderBy: { expiresAt: 'desc' }, take: 1 }
+    }
+  });
+
+  const accessCode = user?.accessCodesUsed[0]?.code || null;
+  const subscription = user?.subscriptions[0] || null;
+
+  res.json({
+    user: {
+      id: user?.id,
+      name: user?.name,
+      email: user?.email,
+      whatsapp: user?.whatsapp,
+      role: user?.role,
+      isActive: user?.isActive,
+      createdAt: user?.createdAt,
+      access_code: accessCode,
+      expires_at: subscription?.expiresAt || null
+    }
+  });
 });
 
 app.put('/api/me', authenticate, async (req: any, res: any) => {
