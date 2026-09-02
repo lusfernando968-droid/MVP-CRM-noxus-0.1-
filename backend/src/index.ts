@@ -154,10 +154,6 @@ app.post('/api/auth/login', async (req, res) => {
     res.status(500).json({ error: 'Erro ao realizar login.' });
   }
 });
-    console.error('Login Error:', error);
-    res.status(500).json({ error: 'Erro interno no servidor.' });
-  }
-});
 
 // Middleware de Autenticação para proteger as próximas rotas
 const authenticate = (req: any, res: any, next: any) => {
