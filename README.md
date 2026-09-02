@@ -1,4 +1,4 @@
-# Welcome to your Lovable project
+# Noxus - Gestão para Tatuadores
 
 ## Project info
 
