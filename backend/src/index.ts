@@ -7,10 +7,32 @@ import jwt from 'jsonwebtoken';
 
 dotenv.config();
 
+// Auto-fix DATABASE_URL para isolamento de schema noxus sem trabalho manual do usuario
+const fixDbUrl = (url?: string) => {
+  if (!url) return url;
+  if (!url.includes('schema=')) {
+    return url + (url.includes('?') ? '&' : '?') + 'schema=noxus';
+  }
+  return url;
+};
+
+if (process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = fixDbUrl(process.env.DATABASE_URL);
+}
+if (process.env.DIRECT_URL) {
+  process.env.DIRECT_URL = fixDbUrl(process.env.DIRECT_URL);
+}
+if (!process.env.DATABASE_URL && process.env.POSTGRES_PRISMA_URL) {
+  process.env.DATABASE_URL = fixDbUrl(process.env.POSTGRES_PRISMA_URL);
+}
+if (!process.env.DIRECT_URL && process.env.POSTGRES_URL_NON_POOLING) {
+  process.env.DIRECT_URL = fixDbUrl(process.env.POSTGRES_URL_NON_POOLING);
+}
+
 const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
+const JWT_SECRET = process.env.JWT_SECRET || 'noxus_secret_key_2026';
 
 app.use(cors());
 app.use(express.json());
