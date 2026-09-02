@@ -85,7 +85,6 @@ export default function SuperAdmin() {
 
     try {
       if (isDemoMode) {
-        // Salvar localmente para demonstração
         const localCodes = JSON.parse(localStorage.getItem("mock_nx_codes") || "[]");
         localCodes.push({ id: Math.random(), ...newClientData });
         localStorage.setItem("mock_nx_codes", JSON.stringify(localCodes));
@@ -170,7 +169,7 @@ export default function SuperAdmin() {
   const renewSubscription = async (id: string, currentExpiry: string) => {
     try {
       const date = new Date(currentExpiry);
-      date.setDate(date.getDate() + 30); // Adiciona 30 dias
+      date.setDate(date.getDate() + 30);
 
       if (isDemoMode) {
         toast.success("Assinatura renovada por +30 dias!");
@@ -193,6 +192,56 @@ export default function SuperAdmin() {
     } catch (error) {
       console.error(error);
       toast.error("Erro ao renovar assinatura.");
+    }
+  };
+
+  const handleConfirmCode = async (codeId: string) => {
+    try {
+      if (isDemoMode) {
+        const localCodes = JSON.parse(localStorage.getItem("mock_nx_codes") || "[]");
+        const updated = localCodes.map((c: any) => c.id === codeId ? { ...c, status: 'used' } : c);
+        localStorage.setItem("mock_nx_codes", JSON.stringify(updated));
+        toast.success("Pagamento confirmado e acesso liberado por +30 dias!");
+        fetchCodes();
+        fetchSubscriptions();
+        return;
+      }
+
+      const token = localStorage.getItem("noxus_token");
+      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/admin/codes/${codeId}/confirm`, {
+        method: "PUT",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Falha ao confirmar");
+      toast.success("Pagamento confirmado e acesso liberado por +30 dias!");
+      fetchCodes();
+      fetchSubscriptions();
+    } catch (error: any) {
+      toast.error("Erro ao confirmar pagamento: " + error.message);
+    }
+  };
+
+  const handleDeleteCode = async (codeId: string) => {
+    try {
+      if (isDemoMode) {
+        const localCodes = JSON.parse(localStorage.getItem("mock_nx_codes") || "[]");
+        const filtered = localCodes.filter((c: any) => c.id !== codeId);
+        localStorage.setItem("mock_nx_codes", JSON.stringify(filtered));
+        toast.success("Cadastro excluído com sucesso!");
+        fetchCodes();
+        return;
+      }
+
+      const token = localStorage.getItem("noxus_token");
+      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/admin/codes/${codeId}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Falha ao excluir");
+      toast.success("Cadastro excluído com sucesso!");
+      fetchCodes();
+    } catch (error: any) {
+      toast.error("Erro ao excluir cadastro: " + error.message);
     }
   };
 
@@ -305,7 +354,7 @@ export default function SuperAdmin() {
                   <div key={sub.id} className="flex justify-between items-center p-4 bg-secondary/30 rounded-xl border border-border/50 hover:bg-secondary/50 transition-colors">
                     <div className="flex flex-col gap-1">
                       <p className="font-semibold text-foreground">ID do Aluno: <span className="font-mono text-xs text-muted-foreground ml-1 bg-background px-2 py-0.5 rounded">{sub.user_id.substring(0,8)}</span></p>
-                      <p className={`text-sm flex items-center gap-1.5 font-medium ${new Date(sub.expires_at) < new Date() ? 'text-destructive' : 'text-success'}`}>
+                      <p className={`text-sm flex items-center gap-1.5 font-medium ${new Date(sub.expires_at) < new Date() ? 'text-destructive' : 'text-emerald-600'}`}>
                         <Clock className="w-4 h-4" /> Vence em: {new Date(sub.expires_at).toLocaleDateString('pt-BR')}
                       </p>
                     </div>
@@ -331,74 +380,77 @@ export default function SuperAdmin() {
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                 {codes.map((code, idx) => (
-                  <div key={code.id || idx} className="p-5 border rounded-xl flex flex-col gap-3 bg-card relative overflow-hidden group hover:border-primary/50 transition-colors">
-                    <div className={`absolute left-0 top-0 bottom-0 w-1 ${code.status === 'used' ? 'bg-success' : 'bg-primary'}`} />
+                  <div key={code.id || idx} className="p-5 border rounded-xl flex flex-col justify-between gap-3 bg-card relative overflow-hidden group hover:border-primary/50 transition-colors shadow-xs">
+                    <div className={`absolute left-0 top-0 bottom-0 w-1 ${code.status === 'used' ? 'bg-emerald-500' : 'bg-primary'}`} />
                     
-                    <div className="flex justify-between items-start pl-2">
-                      <div>
-                        <span className="font-mono font-bold text-xl tracking-wider">{code.code}</span>
-                        <p className="text-sm font-medium text-foreground mt-1">{code.student_name}</p>
+                    <div>
+                      <div className="flex justify-between items-start pl-2 gap-2">
+                        <div>
+                          <span className="font-mono font-bold text-xl tracking-wider">{code.code}</span>
+                          <p className="text-sm font-semibold text-foreground mt-1">{code.student_name}</p>
+                        </div>
+                        {code.status === 'used' ? (
+                          <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1 border border-emerald-500/20 shrink-0">
+                            <CheckCircle className="w-3.5 h-3.5" /> ATIVADO
+                          </span>
+                        ) : (
+                          <span className="bg-primary/10 text-primary px-2.5 py-1 rounded-full text-xs font-bold border border-primary/20 shrink-0">
+                            AGUARDANDO
+                          </span>
+                        )}
                       </div>
-                      {code.status === 'used' ? (
-                        <span className="bg-success/10 text-success px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-sm border border-success/20">
-                          <CheckCircle className="w-3.5 h-3.5" /> ATIVADO
-                        </span>
-                      ) : (
-                        <span className="bg-primary/10 text-primary px-2.5 py-1 rounded-full text-xs font-bold shadow-sm border border-primary/20">
-                          AGUARDANDO
-                        </span>
-                      )}
+
+                      <div className="grid grid-cols-2 gap-2 mt-3 pl-2 border-t pt-3 border-border/40">
+                        {code.created_at && (
+                          <div className="text-xs flex flex-col">
+                            <span className="text-muted-foreground uppercase text-[10px] font-bold">Data da Venda</span>
+                            <span className="font-medium">{new Date(code.created_at).toLocaleDateString('pt-BR')}</span>
+                          </div>
+                        )}
+                        {code.value && (
+                          <div className="text-xs flex flex-col">
+                            <span className="text-muted-foreground uppercase text-[10px] font-bold">Valor</span>
+                            <span className="font-medium text-emerald-600">R$ {code.value}</span>
+                          </div>
+                        )}
+                        {code.payment_method && (
+                          <div className="text-xs flex flex-col">
+                            <span className="text-muted-foreground uppercase text-[10px] font-bold">Forma de Pag.</span>
+                            <span className="font-medium">{code.payment_method}</span>
+                          </div>
+                        )}
+                        {code.phone && (
+                          <div className="text-xs flex flex-col">
+                            <span className="text-muted-foreground uppercase text-[10px] font-bold">Telefone</span>
+                            <span className="font-medium">{code.phone}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 mt-2 pl-2 border-t pt-3 border-border/50">
-                      {code.created_at && (
-                        <div className="text-xs flex flex-col">
-                          <span className="text-muted-foreground uppercase text-[10px] font-bold">Data da Venda</span>
-                          <span className="font-medium">{new Date(code.created_at).toLocaleDateString('pt-BR')}</span>
-                        </div>
-                      )}
-                      {code.value && (
-                        <div className="text-xs flex flex-col">
-                          <span className="text-muted-foreground uppercase text-[10px] font-bold">Valor</span>
-                          <span className="font-medium text-success">R$ {code.value}</span>
-                        </div>
-                      )}
-                      {code.payment_method && (
-                        <div className="text-xs flex flex-col">
-                          <span className="text-muted-foreground uppercase text-[10px] font-bold">Forma de Pag.</span>
-                          <span className="font-medium">{code.payment_method}</span>
-                        </div>
-                      )}
-                      {code.phone && (
-                        <div className="text-xs flex flex-col">
-                          <span className="text-muted-foreground uppercase text-[10px] font-bold">Telefone</span>
-                          <span className="font-medium">{code.phone}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2 mt-2 pt-3 border-t border-border/40 pl-2">
+                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/40 pl-2">
                       {code.status !== 'used' ? (
                         <Button
                           size="sm"
                           onClick={() => handleConfirmCode(code.id)}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold w-full"
+                          className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold h-8 shadow-xs"
                         >
-                          <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
-                          Confirmar Pagamento (+30 Dias)
+                          <CheckCircle className="w-3.5 h-3.5 mr-1" />
+                          Confirmar (+30d)
                         </Button>
                       ) : (
-                        <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
+                        <div className="flex-1 flex items-center gap-1.5 text-xs font-semibold text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1.5 rounded-lg">
                           <CheckCircle className="w-3.5 h-3.5" /> Pagamento Confirmado
-                        </span>
+                        </div>
                       )}
                       <Button
                         size="sm"
-                        variant="ghost"
+                        variant="outline"
                         onClick={() => handleDeleteCode(code.id)}
-                        className="text-destructive hover:bg-destructive/10 text-xs px-2"
+                        className="h-8 text-xs font-medium text-destructive hover:bg-destructive/10 border-destructive/20 shrink-0 px-2.5"
                         title="Excluir cadastro"
                       >
+                        <Trash2 className="w-3.5 h-3.5 mr-1" />
                         Excluir
                       </Button>
                     </div>
