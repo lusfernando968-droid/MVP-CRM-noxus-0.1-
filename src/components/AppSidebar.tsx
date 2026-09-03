@@ -40,20 +40,14 @@ export function AppSidebar() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   useEffect(() => {
-    const fetchUser = async () => {
+    const loadUser = () => {
       try {
-        const token = localStorage.getItem("noxus_token");
-        if (!token) return;
-
-        const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/me", {
-          headers: { "Authorization": `Bearer ${token}` }
-        });
-        
-        if (res.ok) {
-          const { user } = await res.json();
-          setUser({ email: user.email, name: user.name });
-          setRole(user.role);
-          if (user.role === 'SUPERADMIN' || user.role === 'MASTER') {
+        const userStr = localStorage.getItem("noxus_user");
+        if (userStr) {
+          const parsedUser = JSON.parse(userStr);
+          setUser({ email: parsedUser.email, name: parsedUser.name });
+          setRole(parsedUser.role);
+          if (parsedUser.role === 'SUPERADMIN' || parsedUser.role === 'MASTER') {
             setIsSuperAdmin(true);
           }
         }
@@ -62,7 +56,7 @@ export function AppSidebar() {
       }
     };
 
-    fetchUser();
+    loadUser();
   }, []);
 
   const isDemoMode = localStorage.getItem("noxus_demo_mode") === "true";

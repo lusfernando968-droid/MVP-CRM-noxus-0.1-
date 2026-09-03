@@ -39,48 +39,54 @@ export function MobileHeader() {
 
   // Load user info
   useEffect(() => {
-    const fetchUser = async () => {
+    const loadUser = () => {
       try {
-        const token = localStorage.getItem("noxus_token");
-        if (!token) return;
-
-        const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/me", {
-          headers: { "Authorization": `Bearer ${token}` }
-        });
-        
-        if (res.ok) {
-          const { user } = await res.json();
-          setUser({ email: user.email, name: user.name });
-          setRole(user.role);
+        const userStr = localStorage.getItem("noxus_user");
+        if (userStr) {
+          const parsedUser = JSON.parse(userStr);
+          setUser({ email: parsedUser.email, name: parsedUser.name });
+          setRole(parsedUser.role);
         }
       } catch (error) {
         console.error("Erro ao carregar usuário:", error);
       }
     };
-    fetchUser();
+    loadUser();
   }, []);
 
   // Polling for support messages
   const fetchMessages = async (isInitial = false) => {
     if (isInitial) setLoading(true);
-    const token = localStorage.getItem("noxus_token");
-    if (!token) return;
-
+    const userStr = localStorage.getItem("noxus_user");
+    if (!userStr) return;
+    
     try {
-      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/support", {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
+      const parsedUser = JSON.parse(userStr);
+      const { data, error } = await supabase
+        .from('noxus_support_messages')
+        .select('*')
+        .eq('userId', parsedUser.id)
+        .order('createdAt', { ascending: true });
+
+      if (error) throw error;
+      
+      if (data) {
+        const formattedData = data.map((msg: any) => ({
+          id: msg.id,
+          message: msg.message,
+          is_from_support: msg.is_from_support,
+          created_at: msg.createdAt,
+          user_id: msg.userId
+        }));
         setMessages(prev => {
-          if (data.length > prev.length) {
-            const newMsgs = data.slice(prev.length);
+          if (formattedData.length > prev.length) {
+            const newMsgs = formattedData.slice(prev.length);
             const hasNewFromSupport = newMsgs.some((m: Message) => m.is_from_support);
             if (!isOpenRef.current && hasNewFromSupport) {
               setUnreadCount(c => c + 1);
             }
           }
-          return data;
+          return formattedData;
         });
       }
     } catch (e) {
@@ -109,22 +115,32 @@ export function MobileHeader() {
     if (!newMessage.trim() || sending) return;
     setSending(true);
 
-    const token = localStorage.getItem("noxus_token");
-    if (!token) { setSending(false); return; }
+    const userStr = localStorage.getItem("noxus_user");
+    if (!userStr) { setSending(false); return; }
 
     try {
-      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/support", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ message: newMessage.trim() })
-      });
+      const parsedUser = JSON.parse(userStr);
+      const { data, error } = await supabase
+        .from('noxus_support_messages')
+        .insert({
+          message: newMessage.trim(),
+          userId: parsedUser.id,
+          is_from_support: false
+        })
+        .select()
+        .single();
 
-      if (res.ok) {
-        const data = await res.json();
-        setMessages((prev) => [...prev, data]);
+      if (error) throw error;
+      
+      if (data) {
+        const formattedData = {
+          id: data.id,
+          message: data.message,
+          is_from_support: data.is_from_support,
+          created_at: data.createdAt,
+          user_id: data.userId
+        };
+        setMessages((prev) => [...prev, formattedData]);
         setNewMessage("");
       }
     } catch (error) {

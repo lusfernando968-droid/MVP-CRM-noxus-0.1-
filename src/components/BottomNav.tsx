@@ -9,7 +9,7 @@ export function BottomNav() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   useEffect(() => {
-    // Primeiro tenta pegar do localStorage pra ser rápido
+    // Apenas pega do localStorage
     const userStr = localStorage.getItem("noxus_user");
     if (userStr) {
       try {
@@ -20,29 +20,6 @@ export function BottomNav() {
         }
       } catch (e) {}
     }
-
-    // Depois confirma com o backend
-    const fetchUser = async () => {
-      try {
-        const token = localStorage.getItem("noxus_token");
-        if (!token) return;
-
-        const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/me", {
-          headers: { "Authorization": `Bearer ${token}` }
-        });
-        
-        if (res.ok) {
-          const { user } = await res.json();
-          setRole(user.role);
-          if (user.role === 'SUPERADMIN' || user.role === 'MASTER') {
-            setIsSuperAdmin(true);
-          }
-        }
-      } catch (error) {
-        console.error("Erro ao carregar usuário:", error);
-      }
-    };
-    fetchUser();
   }, []);
 
   const isDemoMode = localStorage.getItem("noxus_demo_mode") === "true";

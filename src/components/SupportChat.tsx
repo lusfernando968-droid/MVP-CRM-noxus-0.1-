@@ -2,6 +2,7 @@ import { MessageCircle, X, Send, Loader2 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
 
 interface Message {
     id: string;
@@ -32,22 +33,33 @@ export function SupportChat() {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
-    }, [messages]);
+    }, [messages, isOpen]);
 
     const fetchMessages = async (isInitial = false) => {
         if (isInitial) setLoading(true);
-        const token = localStorage.getItem("noxus_token");
-        if (!token) return;
+        const userStr = localStorage.getItem("noxus_user");
+        if (!userStr) return;
 
         try {
-            const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/support", {
-                headers: { "Authorization": `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                
+            const parsedUser = JSON.parse(userStr);
+            const { data, error } = await supabase
+                .from('noxus_support_messages')
+                .select('*')
+                .eq('userId', parsedUser.id)
+                .order('createdAt', { ascending: true });
+
+            if (error) throw error;
+
+            if (data) {
+                const formattedData = data.map((msg: any) => ({
+                    id: msg.id,
+                    message: msg.message,
+                    is_from_support: msg.is_from_support,
+                    created_at: msg.createdAt,
+                    user_id: msg.userId
+                }));
+
                 setMessages(prev => {
-                    if (data.length > prev.length) {
                         const newMsgs = data.slice(prev.length);
                         const hasNewFromSupport = newMsgs.some((m: Message) => m.is_from_support);
                         if (!isOpenRef.current && hasNewFromSupport) {

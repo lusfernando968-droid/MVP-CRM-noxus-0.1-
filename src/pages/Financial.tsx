@@ -47,16 +47,19 @@ const Financial = () => {
   const fetchTransactions = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("noxus_token");
-      if (!token) return;
+      const userStr = localStorage.getItem("noxus_user");
+      if (!userStr) return;
+      const parsedUser = JSON.parse(userStr);
 
-      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/financial", {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error("Error fetching transactions");
+      const { data, error } = await supabase
+        .from('noxus_financial_transactions')
+        .select('*')
+        .eq('userId', parsedUser.id)
+        .order('date', { ascending: false });
+        
+      if (error) throw error;
       
-      const data = await res.json();
-      const formatted = data.map((t: any) => ({
+      const formatted = (data || []).map((t: any) => ({
         id: t.id,
         description: t.description,
         value: Number(t.value),
@@ -88,22 +91,25 @@ const Financial = () => {
         return;
       }
 
-      const token = localStorage.getItem("noxus_token");
-      if (!token) {
+      const userStr = localStorage.getItem("noxus_user");
+      if (!userStr) {
         toast.error("Você precisa estar logado.");
         return;
       }
+      const parsedUser = JSON.parse(userStr);
 
-      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/financial", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify(formData)
-      });
+      const { error } = await supabase
+        .from('noxus_financial_transactions')
+        .insert({
+          description: formData.description,
+          value: Number(formData.value),
+          type: formData.type,
+          status: formData.status,
+          date: formData.date,
+          userId: parsedUser.id
+        });
 
-      if (!res.ok) throw new Error("Error saving");
+      if (error) throw error;
 
       toast.success("Transação salva com sucesso!");
       setModalOpen(false);

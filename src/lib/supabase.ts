@@ -15,5 +15,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
         autoRefreshToken: true,
         detectSessionInUrl: true,
         storageKey: 'noxus-auth-token',
+    },
+    db: {
+        schema: 'noxus'
     }
 });
