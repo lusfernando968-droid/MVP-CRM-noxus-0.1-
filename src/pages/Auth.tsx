@@ -7,9 +7,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Pen, Mail, Lock, User, ArrowRight, MessageCircle, Phone, FlaskConical, Key } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
+
 import { useToast } from "@/components/ui/use-toast";
-import { API_URL } from "@/lib/api";
 
 const Auth = () => {
     const navigate = useNavigate();
@@ -45,35 +45,32 @@ const Auth = () => {
         
         setLoading(true);
         try {
-            const res = await fetch(`${API_URL}/api/auth/login`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ accessCode: loginAccessCode })
+            const { data, error } = await supabase.rpc('noxus_login', {
+                p_access_code: loginAccessCode
             });
 
-            const text = await res.text();
-            let data: any = {};
-            try {
-              data = JSON.parse(text);
-            } catch (e) {
-              console.error("Non-JSON API response:", text);
-              throw new Error("Servidor conectando... Por favor, tente novamente em alguns segundos.");
-            }
+            if (error) throw error;
             
-            if (!res.ok) {
-                throw new Error(data.error || "Erro ao fazer login");
+            if (data && data.error) {
+                throw new Error(data.error);
             }
 
-            // Salva o token JWT localmente
-            localStorage.setItem("noxus_token", data.token);
-            localStorage.setItem("noxus_user", JSON.stringify(data.user));
+            if (!data || !data.user) {
+                throw new Error("Erro desconhecido ao realizar login.");
+            }
+
+            const user = data.user;
+
+            // Salva o token (simulado) e user localmente
+            localStorage.setItem("noxus_token", "supabase-direct-auth");
+            localStorage.setItem("noxus_user", JSON.stringify(user));
 
             toast({
                 title: "Bem-vindo de volta!",
                 description: "Login realizado com sucesso.",
             });
             
-            if (data.user?.role === 'MASTER' || data.user?.role === 'SUPERADMIN') {
+            if (user.role === 'MASTER' || user.role === 'SUPERADMIN') {
                 navigate("/admin-dashboard");
             } else {
                 navigate("/dashboard");
