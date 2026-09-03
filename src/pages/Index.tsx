@@ -94,7 +94,7 @@ const Index = () => {
         { data: transactions },
         { data: anamneses }
       ] = await Promise.all([
-        supabase.from('noxus_clients').select('id, name, created_at, phone').eq('userId', parsedUser.id),
+        supabase.from('noxus_clients').select('id, name, createdAt, phone').eq('userId', parsedUser.id),
         supabase.from('noxus_appointments').select('*, noxus_clients(name, phone)').eq('userId', parsedUser.id),
         supabase.from('noxus_financial_transactions').select('*').eq('userId', parsedUser.id),
         supabase.from('noxus_anamnesis').select('*')
@@ -212,10 +212,51 @@ const Index = () => {
         }));
       setRecentPayments(recentTx);
       
-      // We can mock charts for now or compute real arrays.
-      setRevenueChartData([]);
-      setYearlyChartData([]);
-      setAppointmentsStatusData([]);
+      // Chart Data: Revenue Trend (Last 7 Days)
+      const revChart = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(today.getDate() - i);
+        const iso = d.toISOString().split('T')[0];
+        const dayIn = (transactions || []).filter((t: any) => t.type === 'entrada' && t.date === iso).reduce((s: number, t: any) => s + Number(t.value), 0);
+        const dayOut = (transactions || []).filter((t: any) => t.type === 'saida' && t.date === iso).reduce((s: number, t: any) => s + Number(t.value), 0);
+        revChart.push({
+          date: d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+          income: dayIn,
+          expense: dayOut
+        });
+      }
+      setRevenueChartData(revChart);
+
+      // Chart Data: Yearly Trend (Last 6 Months)
+      const yearChart = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        const yMonth = d.getMonth();
+        const yYear = d.getFullYear();
+        const mIn = (transactions || []).filter((t: any) => t.type === 'entrada' && new Date(t.date).getMonth() === yMonth && new Date(t.date).getFullYear() === yYear).reduce((s: number, t: any) => s + Number(t.value), 0);
+        const mOut = (transactions || []).filter((t: any) => t.type === 'saida' && new Date(t.date).getMonth() === yMonth && new Date(t.date).getFullYear() === yYear).reduce((s: number, t: any) => s + Number(t.value), 0);
+        
+        yearChart.push({
+          month: d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '').toUpperCase(),
+          income: mIn,
+          profit: mIn - mOut
+        });
+      }
+      setYearlyChartData(yearChart);
+
+      // Chart Data: Appointments Status
+      const statusCounts = (appointments || []).reduce((acc: any, a: any) => {
+        acc[a.status] = (acc[a.status] || 0) + 1;
+        return acc;
+      }, {});
+      
+      const apptData = [];
+      if (statusCounts['Concluído']) apptData.push({ name: 'Concluídos', value: statusCounts['Concluído'], fill: 'hsl(var(--success))' });
+      if (statusCounts['Agendado']) apptData.push({ name: 'Agendados', value: statusCounts['Agendado'], fill: 'hsl(var(--primary))' });
+      if (statusCounts['Cancelado']) apptData.push({ name: 'Cancelados', value: statusCounts['Cancelado'], fill: 'hsl(var(--destructive))' });
+      setAppointmentsStatusData(apptData);
+
       setPendingAnamnesisAlerts([]);
       
       const tomorrow = new Date(today);
