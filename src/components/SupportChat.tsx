@@ -60,13 +60,14 @@ export function SupportChat() {
                 }));
 
                 setMessages(prev => {
-                        const newMsgs = data.slice(prev.length);
+                    if (formattedData.length > prev.length) {
+                        const newMsgs = formattedData.slice(prev.length);
                         const hasNewFromSupport = newMsgs.some((m: Message) => m.is_from_support);
                         if (!isOpenRef.current && hasNewFromSupport) {
                             setUnreadCount(c => c + 1);
                         }
                     }
-                    return data;
+                    return formattedData;
                 });
             }
         } catch (e) {
