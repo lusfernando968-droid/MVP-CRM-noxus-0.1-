@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
-import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, ChevronLeft, ChevronRight, FileText, Banknote, Calendar, RefreshCw, Activity } from "lucide-react";
+import { Plus, ArrowUpRight, ArrowDownRight, DollarSign, ChevronLeft, ChevronRight, FileText, Banknote, Calendar, RefreshCw, Activity, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -124,6 +124,23 @@ const Financial = () => {
     } catch (error) {
       console.error("Error saving transaction:", error);
       toast.error("Erro ao salvar a transação.");
+    }
+  };
+
+  const handleDeleteTransaction = async (id: string) => {
+    if (!confirm("Tem certeza que deseja excluir esta transação?")) return;
+    try {
+      const { error } = await supabase
+        .from('noxus_financial_transactions')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      toast.success("Transação excluída com sucesso!");
+      fetchTransactions();
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao excluir transação.");
     }
   };
 
@@ -335,10 +352,17 @@ const Financial = () => {
                     <td className={`p-3.5 text-sm text-right font-semibold ${t.type === "entrada" ? "text-foreground" : "text-destructive"}`}>
                       {t.type === "entrada" ? "+" : "-"} R$ {t.value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
-                    <td className="p-3.5 text-right">
+                    <td className="p-3.5 text-right flex items-center justify-end gap-2">
                       <span className="text-xs font-medium text-muted-foreground bg-accent/40 border border-border/40 px-2.5 py-0.5 rounded-full">
                         {t.status}
                       </span>
+                      <button 
+                        onClick={() => handleDeleteTransaction(t.id)}
+                        className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors"
+                        title="Excluir Transação"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </td>
                   </tr>
                 ))}

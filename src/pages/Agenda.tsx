@@ -410,7 +410,7 @@ const Agenda = () => {
         .from('noxus_financial_transactions')
         .insert({
           userId: parsedUser.id,
-          type: 'INCOME',
+          type: 'entrada',
           description: `Pagamento de Sessão - ${selectedCheckout.client_name}`,
           value: checkoutData.value,
           date: selectedCheckout.date,
