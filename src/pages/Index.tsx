@@ -91,11 +91,13 @@ const Index = () => {
       const [
         { data: clients },
         { data: appointments },
-        { data: transactions }
+        { data: transactions },
+        { data: anamneses }
       ] = await Promise.all([
         supabase.from('noxus_clients').select('id, name, created_at, phone').eq('userId', parsedUser.id),
         supabase.from('noxus_appointments').select('*, noxus_clients(name, phone)').eq('userId', parsedUser.id),
-        supabase.from('noxus_financial_transactions').select('*').eq('userId', parsedUser.id)
+        supabase.from('noxus_financial_transactions').select('*').eq('userId', parsedUser.id),
+        supabase.from('noxus_anamnesis').select('*')
       ]);
 
       const today = new Date();
@@ -120,9 +122,60 @@ const Index = () => {
         
       const ticketMedio = monthAppts.length > 0 ? (monthIncome / monthAppts.length) : 0;
       
+      const completedAppts = (appointments || []).filter((a: any) => a.status === 'Concluído');
+      
+      let totalMinutesWorked = 0;
+      completedAppts.forEach((a: any) => {
+        if (a.startTime && a.endTime) {
+          const [startH, startM] = a.startTime.split(':').map(Number);
+          const [endH, endM] = a.endTime.split(':').map(Number);
+          let diff = (endH * 60 + endM) - (startH * 60 + startM);
+          if (diff < 0) diff += 24 * 60; // handle overnight sessions if any
+          totalMinutesWorked += diff;
+        }
+      });
+
+      const formatTime = (totalMins: number) => {
+        if (isNaN(totalMins) || totalMins === 0) return "0h 00m";
+        const h = Math.floor(totalMins / 60);
+        const m = Math.floor(totalMins % 60);
+        return `${h}h ${m.toString().padStart(2, '0')}m`;
+      };
+
+      const avgMinutesWorked = completedAppts.length > 0 ? totalMinutesWorked / completedAppts.length : 0;
+
       const aReceber = (appointments || [])
         .filter((a: any) => a.status !== 'Concluído' && a.status !== 'Cancelado')
         .reduce((sum: number, a: any) => sum + Math.max(0, (a.value || 0) - (a.deposit || 0)), 0);
+
+      const clientIds = new Set((clients || []).map((c: any) => c.id));
+      const userAnamneses = (anamneses || []).filter((a: any) => clientIds.has(a.clientId));
+      
+      let topSource = "-";
+      if (userAnamneses.length > 0) {
+        const sourceCounts: Record<string, number> = {};
+        userAnamneses.forEach((a: any) => {
+          let source = a.discoverySource;
+          if (!source && a.answers) {
+            try {
+               const parsed = typeof a.answers === 'string' ? JSON.parse(a.answers) : a.answers;
+               source = parsed.discovery_source;
+            } catch(e) {}
+          }
+          if (source) {
+            const s = source.toLowerCase().trim();
+            sourceCounts[s] = (sourceCounts[s] || 0) + 1;
+          }
+        });
+        
+        let maxCount = 0;
+        for (const [s, count] of Object.entries(sourceCounts)) {
+          if (count > maxCount) {
+            maxCount = count;
+            topSource = s.charAt(0).toUpperCase() + s.slice(1);
+          }
+        }
+      }
 
       setStatsData({
         sessionsToday: todayAppts.length.toString(),
@@ -130,11 +183,11 @@ const Index = () => {
         monthlyExpenses: `R$ ${monthExpense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
         ticketMedio: `R$ ${ticketMedio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
         activeClients: (clients || []).length.toString(),
-        totalWorkedTime: "Em breve",
-        avgWorkedTime: "Em breve",
+        totalWorkedTime: formatTime(totalMinutesWorked),
+        avgWorkedTime: formatTime(avgMinutesWorked),
         pendingReceivables: `R$ ${aReceber.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-        anamnesisCompleted: "-",
-        topDiscoverySource: "-",
+        anamnesisCompleted: userAnamneses.length.toString(),
+        topDiscoverySource: topSource || "-",
       });
 
       // Today clients (for list)
