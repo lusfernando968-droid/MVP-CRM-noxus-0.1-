@@ -92,18 +92,22 @@ const Clients = () => {
         .from('noxus_clients')
         .select(`
           *,
-          noxus_appointments ( date, status ),
-          referrer:referred_by_id ( name )
+          noxus_appointments ( date, status )
         `)
         .eq('userId', parsedUser.id)
         .order('createdAt', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase fetch error:", error);
+        throw error;
+      }
 
       const formatted = (data || []).map((c: any) => {
         const validSessions = (c.noxus_appointments || []).filter((a: any) => a.status !== 'Cancelado');
         const sortedSessions = validSessions.sort((a: any, b: any) => (b.date || "").localeCompare(a.date || ""));
         const lastVisit = sortedSessions.length > 0 ? sortedSessions[0].date : null;
+        
+        const referrer = c.referred_by_id ? data.find((r: any) => r.id === c.referred_by_id) : null;
 
         return {
           id: c.id,
@@ -116,7 +120,7 @@ const Clients = () => {
           lastVisit: lastVisit ? (lastVisit.includes('-') ? lastVisit.split('-').reverse().join('/') : lastVisit) : "Sem visitas",
           avatar_url: c.avatar_url,
           referred_by_id: c.referred_by_id,
-          referrer_name: c.referrer?.name
+          referrer_name: referrer ? referrer.name : null
         };
       });
 
