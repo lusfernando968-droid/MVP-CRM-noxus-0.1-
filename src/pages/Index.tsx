@@ -84,31 +84,94 @@ const Index = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("noxus_token");
-      if (!token) return;
+      const userStr = localStorage.getItem("noxus_user");
+      if (!userStr) return;
+      const parsedUser = JSON.parse(userStr);
 
-      let url = `${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/dashboard?period=${periodFilter}`;
-      if (periodFilter === 'custom' && startDate && endDate) {
-        url += `&startDate=${startDate}&endDate=${endDate}`;
-      }
+      const [
+        { data: clients },
+        { data: appointments },
+        { data: transactions }
+      ] = await Promise.all([
+        supabase.from('noxus_clients').select('id, name, created_at, phone').eq('userId', parsedUser.id),
+        supabase.from('noxus_appointments').select('*, noxus_clients(name, phone)').eq('userId', parsedUser.id),
+        supabase.from('noxus_financial_transactions').select('*').eq('userId', parsedUser.id)
+      ]);
 
-      const res = await fetch(url, {
-        headers: {
-          "Authorization": `Bearer ${token}`
-        }
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      const currentMonth = today.getMonth();
+      const currentYear = today.getFullYear();
+
+      // Stats
+      const todayAppts = (appointments || []).filter((a: any) => a.date === todayStr);
+      const monthAppts = (appointments || []).filter((a: any) => {
+        const d = new Date(a.date);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
       });
       
-      if (!res.ok) throw new Error("Falha ao buscar dados");
-      const data = await res.json();
+      const monthIncome = (transactions || [])
+        .filter((t: any) => t.type === 'entrada' && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear)
+        .reduce((sum: number, t: any) => sum + Number(t.value), 0);
+        
+      const monthExpense = (transactions || [])
+        .filter((t: any) => t.type === 'saida' && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear)
+        .reduce((sum: number, t: any) => sum + Number(t.value), 0);
+        
+      const ticketMedio = monthAppts.length > 0 ? (monthIncome / monthAppts.length) : 0;
+      
+      const aReceber = (appointments || [])
+        .filter((a: any) => a.status !== 'Concluído' && a.status !== 'Cancelado')
+        .reduce((sum: number, a: any) => sum + Math.max(0, (a.value || 0) - (a.deposit || 0)), 0);
 
-      setStatsData(data.stats);
-      setRevenueChartData(data.revenueChartData || []);
-      setYearlyChartData(data.yearlyChartData || []);
-      setAppointmentsStatusData(data.appointmentsStatusData || []);
-      setPendingAnamnesisAlerts(data.pendingAnamnesisAlerts || []);
-      setTodayClients(data.todayClients || []);
-      setRecentPayments(data.recentPayments || []);
-      setTomorrowAppointments(data.tomorrowAppointments || []);
+      setStatsData({
+        sessionsToday: todayAppts.length.toString(),
+        monthlyRevenue: `R$ ${monthIncome.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+        monthlyExpenses: `R$ ${monthExpense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+        ticketMedio: `R$ ${ticketMedio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+        activeClients: (clients || []).length.toString(),
+        totalWorkedTime: "Em breve",
+        avgWorkedTime: "Em breve",
+        pendingReceivables: `R$ ${aReceber.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+        anamnesisCompleted: "-",
+        topDiscoverySource: "-",
+      });
+
+      // Today clients (for list)
+      setTodayClients(todayAppts.map((a: any) => ({
+        id: a.id,
+        name: a.noxus_clients?.name,
+        time: `${a.startTime} - ${a.endTime}`,
+        status: a.status,
+        value: a.value
+      })));
+
+      // Recent payments
+      const recentTx = (transactions || [])
+        .filter((t: any) => t.type === 'entrada')
+        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 5)
+        .map((t: any) => ({
+          id: t.id,
+          description: t.description,
+          value: t.value,
+          date: new Date(t.date).toLocaleDateString('pt-BR')
+        }));
+      setRecentPayments(recentTx);
+      
+      // We can mock charts for now or compute real arrays.
+      setRevenueChartData([]);
+      setYearlyChartData([]);
+      setAppointmentsStatusData([]);
+      setPendingAnamnesisAlerts([]);
+      
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+      setTomorrowAppointments((appointments || []).filter((a: any) => a.date === tomorrowStr).map((a: any) => ({
+        name: a.noxus_clients?.name,
+        time: a.startTime
+      })));
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -134,29 +197,33 @@ const Index = () => {
   const handleCheckout = async () => {
     if (!selectedCheckout) return;
     try {
-      const token = localStorage.getItem("noxus_token");
-      if (!token) {
+      const userStr = localStorage.getItem("noxus_user");
+      if (!userStr) {
         toast.error("Você precisa estar logado.");
         return;
       }
+      const parsedUser = JSON.parse(userStr);
 
-      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/appointments/checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          appointmentId: selectedCheckout.id,
-          status: checkoutData.status,
+      const { error: txError } = await supabase
+        .from('noxus_financial_transactions')
+        .insert({
+          userId: parsedUser.id,
+          type: 'entrada',
+          description: `Pagamento de Sessão - ${selectedCheckout.name}`,
           value: checkoutData.value,
-          paymentMethod: checkoutData.paymentMethod,
-          name: selectedCheckout.name,
-          date: selectedCheckout.date
-        })
-      });
+          date: new Date().toISOString().split('T')[0],
+          status: checkoutData.status,
+          appointmentId: selectedCheckout.id
+        });
 
-      if (!res.ok) throw new Error("Falha no checkout");
+      if (txError) throw txError;
+      
+      const { error: updateError } = await supabase
+        .from('noxus_appointments')
+        .update({ status: 'Concluído' })
+        .eq('id', selectedCheckout.id);
+        
+      if (updateError) throw updateError;
 
       toast.success("Sessão baixada com sucesso!");
       setCheckoutModalOpen(false);
