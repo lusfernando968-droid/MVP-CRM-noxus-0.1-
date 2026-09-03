@@ -25,8 +25,20 @@ const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'noxus_secret_key_2026';
 
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
 app.use(express.json());
+
+// Health check
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', service: 'Noxus API', timestamp: new Date().toISOString() });
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', service: 'Noxus API', timestamp: new Date().toISOString() });
+});
 
 // ==========================================
 // AUTHENTICATION ROUTES

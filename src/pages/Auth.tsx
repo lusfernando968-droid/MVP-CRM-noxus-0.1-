@@ -79,10 +79,11 @@ const Auth = () => {
                 navigate("/dashboard");
             }
         } catch (error: any) {
+            console.error("Login error details:", error);
             toast({
                 variant: "destructive",
                 title: "Erro no login",
-                description: error.message || "Verifique suas credenciais.",
+                description: error.message || "Erro ao realizar login.",
             });
         } finally {
             setLoading(false);
