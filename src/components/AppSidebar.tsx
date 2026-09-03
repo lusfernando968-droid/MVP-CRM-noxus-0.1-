@@ -74,13 +74,11 @@ export function AppSidebar() {
       { title: "Gestão Clientes", path: "/admin-noxus", icon: Shield },
       { title: "Usuários", path: "/usuarios", icon: Users },
       { title: "Suporte Interno", path: "/suporte-admin", icon: MessageSquare },
-      { title: "Vendas Noxus", path: "/dev-dashboard", icon: DollarSign },
     ];
   } else if (role === 'ADMIN') {
     navItems = [
       { title: "Usuários", path: "/usuarios", icon: Users },
       { title: "Suporte Interno", path: "/suporte-admin", icon: MessageSquare },
-      { title: "Vendas Noxus", path: "/dev-dashboard", icon: DollarSign },
     ];
   } else {
     navItems = [
