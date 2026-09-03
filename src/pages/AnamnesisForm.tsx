@@ -37,21 +37,32 @@ export default function AnamnesisForm() {
             if (!clientId) return;
 
             try {
-                const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/anamnesis/${clientId}`);
-                const data = await res.json();
-                
-                if (!res.ok) {
-                    setErrorMsg(data.error || "Cliente não encontrado ou link inválido.");
-                    return;
-                }
+                // Check if anamnesis exists
+                const { data: anamnesis, error: aError } = await supabase
+                    .from('noxus_anamnesis')
+                    .select('*')
+                    .eq('clientId', clientId)
+                    .single();
 
-                if (data.hasAnamnesis) {
+                if (anamnesis) {
                     setSuccess(true);
                     setLoading(false);
                     return;
                 }
 
-                setClientData(data.client);
+                // Fetch client details
+                const { data: client, error: cError } = await supabase
+                    .from('noxus_clients')
+                    .select('id, name')
+                    .eq('id', clientId)
+                    .single();
+                
+                if (cError || !client) {
+                    setErrorMsg("Cliente não encontrado ou link inválido.");
+                    return;
+                }
+
+                setClientData(client);
             } catch (err) {
                 console.error("Error fetching client:", err);
                 setErrorMsg("Erro ao carregar os dados.");
@@ -67,7 +78,7 @@ export default function AnamnesisForm() {
         e.preventDefault();
 
         if (!formData.agreed_to_terms) {
-            alert("Você preisa ler e concordar com os termos de serviço para continuar.");
+            alert("Você precisa ler e concordar com os termos de serviço para continuar.");
             return;
         }
 
@@ -88,19 +99,21 @@ export default function AnamnesisForm() {
                 age--;
             }
 
-            const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/anamnesis/${clientId}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    formData,
-                    age
-                })
-            });
+            const { error: anamnesisError } = await supabase
+                .from('noxus_anamnesis')
+                .insert({
+                    clientId: clientId,
+                    answers: formData,
+                    discoverySource: formData.discovery_source
+                });
 
-            if (!res.ok) {
-                const errorData = await res.json();
-                throw new Error(errorData.error || "Erro ao salvar anamnese");
-            }
+            if (anamnesisError) throw anamnesisError;
+
+            // Update client age and birth date
+            await supabase
+                .from('noxus_clients')
+                .update({ age: age, birth_date: formData.birth_date })
+                .eq('id', clientId);
 
             setSuccess(true);
         } catch (err: any) {
