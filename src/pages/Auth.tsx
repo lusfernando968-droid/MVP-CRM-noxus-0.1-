@@ -26,7 +26,7 @@ const Auth = () => {
                     try {
                         const parsedUser = JSON.parse(userStr);
                         if (parsedUser.role === 'SUPERADMIN' || parsedUser.role === 'MASTER') {
-                            navigate('/super-admin');
+                            navigate('/admin-dashboard');
                             return;
                         }
                     } catch (e) {}
