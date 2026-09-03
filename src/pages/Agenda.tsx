@@ -91,15 +91,33 @@ const Agenda = () => {
   const fetchAppointments = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("noxus_token");
-      if (!token) return;
+      const userStr = localStorage.getItem("noxus_user");
+      if (!userStr) return;
+      const parsedUser = JSON.parse(userStr);
 
-      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/appointments", {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error("Erro");
-      const data = await res.json();
-      setAppointments(data);
+      const { data, error } = await supabase
+        .from('noxus_appointments')
+        .select(`
+          *,
+          noxus_clients ( name )
+        `)
+        .eq('userId', parsedUser.id);
+        
+      if (error) throw error;
+      
+      const formatted = (data || []).map((appt: any) => ({
+        id: appt.id,
+        client_id: appt.clientId,
+        client_name: appt.noxus_clients?.name,
+        date: appt.date,
+        startTime: appt.startTime,
+        endTime: appt.endTime,
+        value: appt.value,
+        deposit: appt.deposit,
+        deposit_date: appt.depositDate,
+        status: appt.status
+      }));
+      setAppointments(formatted);
     } catch (error) {
       console.error('Error fetching appointments:', error);
     } finally {
@@ -109,13 +127,17 @@ const Agenda = () => {
 
   const fetchClients = async () => {
     try {
-      const token = localStorage.getItem("noxus_token");
-      if (!token) return;
-      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/clients", {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error("Erro");
-      const data = await res.json();
+      const userStr = localStorage.getItem("noxus_user");
+      if (!userStr) return;
+      const parsedUser = JSON.parse(userStr);
+      
+      const { data, error } = await supabase
+        .from('noxus_clients')
+        .select('id, name, phone')
+        .eq('userId', parsedUser.id)
+        .order('name');
+        
+      if (error) throw error;
       setClients(data || []);
     } catch (error) {
       console.error('Error fetching clients:', error);
@@ -235,15 +257,12 @@ const Agenda = () => {
 
     try {
       setLoading(true);
-      const token = localStorage.getItem("noxus_token");
-      if (!token) return;
+      const { error } = await supabase
+        .from('noxus_appointments')
+        .delete()
+        .eq('id', editingAppointment.id);
 
-      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/appointments/${editingAppointment.id}`, {
-        method: 'DELETE',
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-
-      if (!res.ok) throw new Error("Erro ao excluir agendamento.");
+      if (error) throw error;
 
       toast.success("Agendamento excluído com sucesso.");
       setModalOpen(false);
@@ -264,36 +283,43 @@ const Agenda = () => {
         return;
       }
 
-      const token = localStorage.getItem("noxus_token");
-      if (!token) {
+      const userStr = localStorage.getItem("noxus_user");
+      if (!userStr) {
         alert("Sessão expirada.");
         return;
       }
+      const parsedUser = JSON.parse(userStr);
+      
+      const payload = {
+        clientId: formData.client_id,
+        date: formData.date,
+        startTime: formData.startTime,
+        endTime: formData.endTime,
+        status: formData.status,
+        value: formData.value,
+        deposit: formData.deposit,
+        depositDate: formData.deposit_date || null,
+        userId: parsedUser.id
+      };
 
       if (editingAppointment) {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/appointments/${editingAppointment.id}`, {
-          method: 'PUT',
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify(formData)
-        });
-        if (!res.ok) throw new Error("Erro ao atualizar");
+        const { error } = await supabase
+          .from('noxus_appointments')
+          .update(payload)
+          .eq('id', editingAppointment.id);
+        
+        if (error) throw error;
       } else {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/appointments`, {
-          method: 'POST',
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify(formData)
-        });
-        if (!res.ok) throw new Error("Erro ao criar");
+        const { error } = await supabase
+          .from('noxus_appointments')
+          .insert([payload]);
+          
+        if (error) throw error;
       }
 
       await fetchAppointments();
       setModalOpen(false);
+      toast.success("Agendamento salvo com sucesso!");
     } catch (error) {
       console.error('Error saving appointment:', error);
       alert('Erro ao salvar agendamento.');
@@ -319,28 +345,20 @@ const Agenda = () => {
   const handleEventChange = async (changeInfo: any) => {
     const { event } = changeInfo;
     try {
-      const token = localStorage.getItem("noxus_token");
-      if (!token) return;
-
       const appt = appointments.find(a => a.id === event.id);
       if (!appt) return;
 
-      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/appointments/${event.id}`, {
-        method: 'PUT',
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({
-          client_id: appt.client_id,
+      const { error } = await supabase
+        .from('noxus_appointments')
+        .update({
           date: event.startStr.split("T")[0],
           startTime: event.startStr.split("T")[1].substring(0, 5),
-          endTime: event.endStr ? event.endStr.split("T")[1].substring(0, 5) : appt.endTime,
-          status: appt.status,
-          value: appt.value,
-          deposit: appt.deposit,
-          deposit_date: appt.deposit_date
+          endTime: event.endStr ? event.endStr.split("T")[1].substring(0, 5) : appt.endTime
         })
-      });
+        .eq('id', event.id);
 
-      if (!res.ok) throw new Error("Erro");
+      if (error) throw error;
+      
       await fetchAppointments();
     } catch (error) {
       console.error('Error updating appointment:', error);
@@ -351,26 +369,12 @@ const Agenda = () => {
   const handleConfirmAppointment = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const token = localStorage.getItem("noxus_token");
-      if (!token) return;
-      const appt = appointments.find(a => a.id === id);
-      if (!appt) return;
-      
-      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/appointments/${id}`, {
-        method: 'PUT',
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({
-          client_id: appt.client_id,
-          date: appt.date,
-          startTime: appt.startTime,
-          endTime: appt.endTime,
-          status: 'Confirmado',
-          value: appt.value,
-          deposit: appt.deposit,
-          deposit_date: appt.deposit_date
-        })
-      });
-      if (!res.ok) throw new Error("Erro");
+      const { error } = await supabase
+        .from('noxus_appointments')
+        .update({ status: 'Confirmado' })
+        .eq('id', id);
+        
+      if (error) throw error;
 
       await fetchAppointments();
       toast.success("Agendamento confirmado com sucesso!");
@@ -394,26 +398,35 @@ const Agenda = () => {
   const handleCheckout = async () => {
     if (!selectedCheckout) return;
     try {
-      const token = localStorage.getItem("noxus_token");
-      if (!token) {
+      const userStr = localStorage.getItem("noxus_user");
+      if (!userStr) {
         toast.error("Você precisa estar logado.");
         return;
       }
+      const parsedUser = JSON.parse(userStr);
 
-      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + '/api/appointments/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          appointmentId: selectedCheckout.id,
-          status: checkoutData.status,
+      // Create transaction for checkout
+      const { error: txError } = await supabase
+        .from('noxus_financial_transactions')
+        .insert({
+          userId: parsedUser.id,
+          type: 'INCOME',
+          description: `Pagamento de Sessão - ${selectedCheckout.client_name}`,
           value: checkoutData.value,
-          paymentMethod: checkoutData.paymentMethod,
-          name: selectedCheckout.client_name,
-          date: selectedCheckout.date
-        })
-      });
+          date: selectedCheckout.date,
+          status: checkoutData.status,
+          appointmentId: selectedCheckout.id
+        });
 
-      if (!res.ok) throw new Error("Erro");
+      if (txError) throw txError;
+      
+      // Update appointment status to "Concluído"
+      const { error: updateError } = await supabase
+        .from('noxus_appointments')
+        .update({ status: 'Concluído' })
+        .eq('id', selectedCheckout.id);
+        
+      if (updateError) throw updateError;
 
       toast.success("Sessão baixada com sucesso!");
       setCheckoutModalOpen(false);
