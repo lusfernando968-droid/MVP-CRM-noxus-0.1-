@@ -1363,10 +1363,7 @@ app.use((err: any, req: any, res: any, next: any) => {
   res.status(500).json({ error: err?.message || "Erro interno no servidor." });
 });
 
-if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
-  app.listen(PORT, () => {
-    console.log(`🔥 Backend rodando na porta ${PORT}`);
-  });
-}
+app.listen(PORT, () => {
+  console.log(`🔥 Backend Noxus rodando na porta ${PORT}`);
+});
 
-export default app;
