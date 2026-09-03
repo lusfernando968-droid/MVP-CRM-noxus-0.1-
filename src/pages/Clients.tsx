@@ -171,7 +171,10 @@ const Clients = () => {
       if (error && error.code !== 'PGRST116') throw error; // PGRST116 is no rows
       
       if (data) {
-        const answers = data.answers || {};
+        let answers = data.answers || {};
+        if (typeof answers === 'string') {
+          try { answers = JSON.parse(answers); } catch(e) {}
+        }
         setClientAnamnesis({
           medical_history: {
             diabetes: answers.diabetes,
