@@ -84,32 +84,44 @@ const Clients = () => {
   const fetchClients = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("noxus_token");
-      if (!token) return;
+      const userStr = localStorage.getItem("noxus_user");
+      if (!userStr) return;
+      const parsedUser = JSON.parse(userStr);
 
-      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/clients", {
-        headers: { "Authorization": `Bearer ${token}` }
+      const { data, error } = await supabase
+        .from('noxus_clients')
+        .select(`
+          *,
+          noxus_appointments ( date, status ),
+          referrer:referred_by_id ( name )
+        `)
+        .eq('userId', parsedUser.id)
+        .order('createdAt', { ascending: false });
+
+      if (error) throw error;
+
+      const formatted = (data || []).map((c: any) => {
+        const validSessions = (c.noxus_appointments || []).filter((a: any) => a.status !== 'Cancelado');
+        const sortedSessions = validSessions.sort((a: any, b: any) => (b.date || "").localeCompare(a.date || ""));
+        const lastVisit = sortedSessions.length > 0 ? sortedSessions[0].date : null;
+
+        return {
+          id: c.id,
+          name: c.name,
+          phone: c.phone || "Não informado",
+          instagram: c.instagram || "@",
+          birth_date: c.birth_date || "",
+          age: c.birth_date ? calculateAgeFromDate(c.birth_date) : (c.age || 0),
+          sessions: c.noxus_appointments ? c.noxus_appointments.length : 0,
+          lastVisit: lastVisit ? (lastVisit.includes('-') ? lastVisit.split('-').reverse().join('/') : lastVisit) : "Sem visitas",
+          avatar_url: c.avatar_url,
+          referred_by_id: c.referred_by_id,
+          referrer_name: c.referrer?.name
+        };
       });
-      if (!res.ok) throw new Error("Erro ao buscar clientes");
-      const data = await res.json();
-
-      const formatted = data.map((c: any) => ({
-        id: c.id,
-        name: c.name,
-        phone: c.phone || "Não informado",
-        instagram: c.instagram || "@",
-        birth_date: c.birth_date || "",
-        age: c.birth_date ? calculateAgeFromDate(c.birth_date) : (c.age || 0),
-        sessions: c.sessions || 0,
-        lastVisit: c.last_visit ? new Date(c.last_visit).toLocaleDateString() : "Sem visitas",
-        avatar_url: c.avatar_url,
-        referred_by_id: c.referred_by_id,
-        referrer_name: c.referrer?.name
-      }));
 
       setClients(formatted);
 
-      // Update selected client if it was already selected
       if (selectedClient) {
         const updated = formatted.find((c: any) => c.id === selectedClient.id);
         if (updated) setSelectedClient(updated);
@@ -146,11 +158,16 @@ const Clients = () => {
   const fetchClientAnamnesis = async (clientId: string) => {
     try {
       setLoadingAnamnesis(true);
-      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/anamnesis/${clientId}`);
-      const data = await res.json();
+      const { data, error } = await supabase
+        .from('noxus_anamnesis')
+        .select('*')
+        .eq('clientId', clientId)
+        .single();
       
-      if (res.ok && data.anamnesis) {
-        const answers = data.anamnesis.answers;
+      if (error && error.code !== 'PGRST116') throw error; // PGRST116 is no rows
+      
+      if (data) {
+        const answers = data.answers || {};
         setClientAnamnesis({
           medical_history: {
             diabetes: answers.diabetes,
@@ -160,12 +177,12 @@ const Clients = () => {
             keloids: answers.keloids,
           },
           birth_date: answers.birth_date,
-          discovery_source: answers.discovery_source,
+          discovery_source: data.discoverySource || answers.discovery_source,
           allergies: answers.allergies,
           medications: answers.medications,
           emergency_contact: answers.emergency_contact,
           has_contract_signed: true,
-          signed_at: data.anamnesis.createdAt
+          signed_at: data.createdAt
         });
       } else {
         setClientAnamnesis(null);
@@ -180,12 +197,13 @@ const Clients = () => {
   const fetchClientSessions = async (clientId: string) => {
     try {
       setLoadingSessions(true);
-      const token = localStorage.getItem("noxus_token");
-      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/appointments/client/${clientId}`, {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error("Erro");
-      const data = await res.json();
+      const { data, error } = await supabase
+        .from('noxus_appointments')
+        .select('*')
+        .eq('clientId', clientId)
+        .order('date', { ascending: false });
+        
+      if (error) throw error;
       setClientSessions(data || []);
     } catch (error) {
       console.error('Error fetching client sessions:', error);
@@ -197,12 +215,13 @@ const Clients = () => {
   const fetchReferredClients = async (clientId: string) => {
     try {
       setLoadingReferrals(true);
-      const token = localStorage.getItem("noxus_token");
-      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/clients/${clientId}/referrals`, {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error("Erro");
-      const data = await res.json();
+      const { data, error } = await supabase
+        .from('noxus_clients')
+        .select('id, name, phone')
+        .eq('referred_by_id', clientId)
+        .order('createdAt', { ascending: false });
+        
+      if (error) throw error;
       setReferredClients(data || []);
     } catch (error) {
       console.error('Error fetching referred clients:', error);
@@ -341,31 +360,27 @@ const Clients = () => {
         return;
       }
 
-      const token = localStorage.getItem("noxus_token");
-      if (!token) {
+      const userStr = localStorage.getItem("noxus_user");
+      if (!userStr) {
         alert("Sessão expirada. Faça login novamente.");
         return;
       }
+      const parsedUser = JSON.parse(userStr);
 
-      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/clients", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({
+      const { error } = await supabase
+        .from('noxus_clients')
+        .insert({
           name: newClientData.name,
           phone: newClientData.phone,
           instagram: newClientData.instagram,
           birth_date: newClientData.birth_date,
           avatar_url: newClientData.avatar_url,
-          referred_by_id: newClientData.referred_by_id === "none" ? null : (newClientData.referred_by_id || null)
-        })
-      });
+          referred_by_id: newClientData.referred_by_id === "none" ? null : (newClientData.referred_by_id || null),
+          userId: parsedUser.id
+        });
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Erro ao criar cliente");
+      if (error) {
+        throw new Error(error.message || "Erro ao criar cliente");
       }
 
       await fetchClients();
@@ -406,26 +421,19 @@ const Clients = () => {
         return;
       }
 
-      const token = localStorage.getItem("noxus_token");
-      if (!token) return;
-
       setUploading(true);
-      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/clients/${editClientData.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({
+      const { error } = await supabase
+        .from('noxus_clients')
+        .update({
           name: editClientData.name,
           phone: editClientData.phone,
           instagram: editClientData.instagram,
           birth_date: editClientData.birth_date,
           referred_by_id: editClientData.referred_by_id === "none" ? null : (editClientData.referred_by_id || null)
         })
-      });
+        .eq('id', editClientData.id);
 
-      if (!res.ok) throw new Error("Erro ao atualizar cliente");
+      if (error) throw error;
 
       await fetchClients();
       setIsEditingClient(false);
@@ -446,15 +454,13 @@ const Clients = () => {
 
     try {
       setLoading(true);
-      const token = localStorage.getItem("noxus_token");
-      if (!token) return;
+      
+      const { error } = await supabase
+        .from('noxus_clients')
+        .delete()
+        .eq('id', selectedClient.id);
 
-      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/clients/${selectedClient.id}`, {
-        method: "DELETE",
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-
-      if (!res.ok) throw new Error("Erro ao excluir cliente");
+      if (error) throw error;
 
       setSelectedClient(null);
       await fetchClients();
