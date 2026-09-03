@@ -39,16 +39,14 @@ export default function SuperAdmin() {
 
   const checkAdminStatus = async () => {
     try {
-      const token = localStorage.getItem("noxus_token");
-      if (!token) return;
+      const userStr = localStorage.getItem("noxus_user");
+      if (!userStr) {
+        setHasAnyAdmin(false);
+        setLoading(false);
+        return;
+      }
 
-      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/me", {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      
-      if (!res.ok) return;
-
-      const { user } = await res.json();
+      const user = JSON.parse(userStr);
       
       if (user && (user.role === 'MASTER' || user.role === 'SUPERADMIN')) {
         setIsAdmin(true);
@@ -60,6 +58,7 @@ export default function SuperAdmin() {
       }
     } catch (error) {
       console.error(error);
+      setHasAnyAdmin(false);
     } finally {
       setLoading(false);
     }
@@ -74,19 +73,18 @@ export default function SuperAdmin() {
     
     const newClientData = {
       code: randomCode,
-      student_name: newStudentName,
-      phone: newStudentPhone,
-      email: newStudentEmail,
-      payment_method: paymentMethod,
-      value: subscriptionValue,
-      status: 'available',
-      created_at: new Date().toISOString()
+      clientName: newStudentName,
+      clientPhone: newStudentPhone,
+      clientEmail: newStudentEmail,
+      paymentMethod: paymentMethod,
+      subscriptionValue: Number(subscriptionValue),
+      status: 'available'
     };
 
     try {
       if (isDemoMode) {
         const localCodes = JSON.parse(localStorage.getItem("mock_nx_codes") || "[]");
-        localCodes.push({ id: Math.random(), ...newClientData });
+        localCodes.push({ id: Math.random(), ...newClientData, created_at: new Date().toISOString() });
         localStorage.setItem("mock_nx_codes", JSON.stringify(localCodes));
         
         toast.success(`Cliente registrado e Código ${randomCode} gerado com sucesso!`);
@@ -95,17 +93,11 @@ export default function SuperAdmin() {
         return;
       }
 
-      const token = localStorage.getItem("noxus_token");
-      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/admin/codes", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify(newClientData)
-      });
+      const { error } = await supabase
+        .from('noxus_access_codes')
+        .insert([newClientData]);
 
-      if (!res.ok) throw new Error("Erro ao criar código");
+      if (error) throw error;
       
       toast.success(`Código ${randomCode} gerado com sucesso!`);
       clearForm();
@@ -132,14 +124,13 @@ export default function SuperAdmin() {
     }
 
     try {
-      const token = localStorage.getItem("noxus_token");
-      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/admin/codes", {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setCodes(data);
-      }
+      const { data, error } = await supabase
+        .from('noxus_access_codes')
+        .select('*')
+        .order('createdAt', { ascending: false });
+      
+      if (error) throw error;
+      if (data) setCodes(data);
     } catch (error) {
       console.error("Erro ao buscar códigos", error);
     }
@@ -153,14 +144,13 @@ export default function SuperAdmin() {
     }
 
     try {
-      const token = localStorage.getItem("noxus_token");
-      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/admin/subscriptions", {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSubscriptions(data);
-      }
+      const { data, error } = await supabase
+        .from('noxus_subscriptions')
+        .select('*')
+        .order('createdAt', { ascending: false });
+      
+      if (error) throw error;
+      if (data) setSubscriptions(data);
     } catch (error) {
       console.error("Erro ao buscar assinaturas", error);
     }
@@ -176,17 +166,12 @@ export default function SuperAdmin() {
         return;
       }
 
-      const token = localStorage.getItem("noxus_token");
-      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/admin/subscriptions/${id}/renew`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ expiresAt: date.toISOString() })
-      });
+      const { error } = await supabase
+        .from('noxus_subscriptions')
+        .update({ expiresAt: date.toISOString() })
+        .eq('id', id);
 
-      if (!res.ok) throw new Error("Erro ao renovar");
+      if (error) throw error;
       toast.success("Assinatura renovada por +30 dias!");
       fetchSubscriptions();
     } catch (error) {
@@ -198,22 +183,18 @@ export default function SuperAdmin() {
   const handleConfirmCode = async (codeId: string) => {
     try {
       if (isDemoMode) {
-        const localCodes = JSON.parse(localStorage.getItem("mock_nx_codes") || "[]");
-        const updated = localCodes.map((c: any) => c.id === codeId ? { ...c, status: 'used' } : c);
-        localStorage.setItem("mock_nx_codes", JSON.stringify(updated));
-        toast.success("Pagamento confirmado e acesso liberado por +30 dias!");
+        toast.success("Pagamento confirmado!");
         fetchCodes();
-        fetchSubscriptions();
         return;
       }
 
-      const token = localStorage.getItem("noxus_token");
-      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/admin/codes/${codeId}/confirm`, {
-        method: "PUT",
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error("Falha ao confirmar");
-      toast.success("Pagamento confirmado e acesso liberado por +30 dias!");
+      const { error } = await supabase
+        .from('noxus_access_codes')
+        .update({ status: 'used' })
+        .eq('id', codeId);
+      
+      if (error) throw error;
+      toast.success("Pagamento confirmado e acesso liberado!");
       fetchCodes();
       fetchSubscriptions();
     } catch (error: any) {
@@ -224,20 +205,17 @@ export default function SuperAdmin() {
   const handleDeleteCode = async (codeId: string) => {
     try {
       if (isDemoMode) {
-        const localCodes = JSON.parse(localStorage.getItem("mock_nx_codes") || "[]");
-        const filtered = localCodes.filter((c: any) => c.id !== codeId);
-        localStorage.setItem("mock_nx_codes", JSON.stringify(filtered));
         toast.success("Cadastro excluído com sucesso!");
         fetchCodes();
         return;
       }
 
-      const token = localStorage.getItem("noxus_token");
-      const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/admin/codes/${codeId}`, {
-        method: "DELETE",
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error("Falha ao excluir");
+      const { error } = await supabase
+        .from('noxus_access_codes')
+        .delete()
+        .eq('id', codeId);
+        
+      if (error) throw error;
       toast.success("Cadastro excluído com sucesso!");
       fetchCodes();
     } catch (error: any) {
@@ -353,12 +331,12 @@ export default function SuperAdmin() {
                 {subscriptions.map(sub => (
                   <div key={sub.id} className="flex justify-between items-center p-4 bg-secondary/30 rounded-xl border border-border/50 hover:bg-secondary/50 transition-colors">
                     <div className="flex flex-col gap-1">
-                      <p className="font-semibold text-foreground">ID do Aluno: <span className="font-mono text-xs text-muted-foreground ml-1 bg-background px-2 py-0.5 rounded">{sub.user_id.substring(0,8)}</span></p>
-                      <p className={`text-sm flex items-center gap-1.5 font-medium ${new Date(sub.expires_at) < new Date() ? 'text-destructive' : 'text-emerald-600'}`}>
-                        <Clock className="w-4 h-4" /> Vence em: {new Date(sub.expires_at).toLocaleDateString('pt-BR')}
+                      <p className="font-semibold text-foreground">ID do Aluno: <span className="font-mono text-xs text-muted-foreground ml-1 bg-background px-2 py-0.5 rounded">{sub.userId ? sub.userId.substring(0,8) : ''}</span></p>
+                      <p className={`text-sm flex items-center gap-1.5 font-medium ${new Date(sub.expiresAt) < new Date() ? 'text-destructive' : 'text-emerald-600'}`}>
+                        <Clock className="w-4 h-4" /> Vence em: {new Date(sub.expiresAt).toLocaleDateString('pt-BR')}
                       </p>
                     </div>
-                    <Button size="sm" variant="outline" className="hover:bg-primary hover:text-primary-foreground transition-colors font-bold" onClick={() => renewSubscription(sub.id, sub.expires_at)}>
+                    <Button size="sm" variant="outline" className="hover:bg-primary hover:text-primary-foreground transition-colors font-bold" onClick={() => renewSubscription(sub.id, sub.expiresAt)}>
                       +30 Dias
                     </Button>
                   </div>
@@ -387,7 +365,7 @@ export default function SuperAdmin() {
                       <div className="flex justify-between items-start pl-2 gap-2">
                         <div>
                           <span className="font-mono font-bold text-xl tracking-wider">{code.code}</span>
-                          <p className="text-sm font-semibold text-foreground mt-1">{code.student_name}</p>
+                          <p className="text-sm font-semibold text-foreground mt-1">{code.clientName}</p>
                         </div>
                         {code.status === 'used' ? (
                           <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1 border border-emerald-500/20 shrink-0">
@@ -401,28 +379,28 @@ export default function SuperAdmin() {
                       </div>
 
                       <div className="grid grid-cols-2 gap-2 mt-3 pl-2 border-t pt-3 border-border/40">
-                        {code.created_at && (
+                        {code.createdAt && (
                           <div className="text-xs flex flex-col">
                             <span className="text-muted-foreground uppercase text-[10px] font-bold">Data da Venda</span>
-                            <span className="font-medium">{new Date(code.created_at).toLocaleDateString('pt-BR')}</span>
+                            <span className="font-medium">{new Date(code.createdAt).toLocaleDateString('pt-BR')}</span>
                           </div>
                         )}
-                        {code.value && (
+                        {code.subscriptionValue && (
                           <div className="text-xs flex flex-col">
                             <span className="text-muted-foreground uppercase text-[10px] font-bold">Valor</span>
-                            <span className="font-medium text-emerald-600">R$ {code.value}</span>
+                            <span className="font-medium text-emerald-600">R$ {code.subscriptionValue}</span>
                           </div>
                         )}
-                        {code.payment_method && (
+                        {code.paymentMethod && (
                           <div className="text-xs flex flex-col">
                             <span className="text-muted-foreground uppercase text-[10px] font-bold">Forma de Pag.</span>
-                            <span className="font-medium">{code.payment_method}</span>
+                            <span className="font-medium">{code.paymentMethod}</span>
                           </div>
                         )}
-                        {code.phone && (
+                        {code.clientPhone && (
                           <div className="text-xs flex flex-col">
                             <span className="text-muted-foreground uppercase text-[10px] font-bold">Telefone</span>
-                            <span className="font-medium">{code.phone}</span>
+                            <span className="font-medium">{code.clientPhone}</span>
                           </div>
                         )}
                       </div>
