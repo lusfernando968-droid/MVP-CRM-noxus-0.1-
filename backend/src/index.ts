@@ -7,27 +7,18 @@ import jwt from 'jsonwebtoken';
 
 dotenv.config();
 
-// Auto-fix DATABASE_URL para isolamento de schema noxus sem trabalho manual do usuario
+const DEFAULT_SUPABASE_URL = "postgresql://postgres:998069655FFF@db.wrwjsqizpiutfoheriuv.supabase.co:5432/postgres?schema=noxus";
+
 const fixDbUrl = (url?: string) => {
-  if (!url) return url;
+  if (!url) return DEFAULT_SUPABASE_URL;
   if (!url.includes('schema=')) {
     return url + (url.includes('?') ? '&' : '?') + 'schema=noxus';
   }
   return url;
 };
 
-if (process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = fixDbUrl(process.env.DATABASE_URL);
-}
-if (process.env.DIRECT_URL) {
-  process.env.DIRECT_URL = fixDbUrl(process.env.DIRECT_URL);
-}
-if (!process.env.DATABASE_URL && process.env.POSTGRES_PRISMA_URL) {
-  process.env.DATABASE_URL = fixDbUrl(process.env.POSTGRES_PRISMA_URL);
-}
-if (!process.env.DIRECT_URL && process.env.POSTGRES_URL_NON_POOLING) {
-  process.env.DIRECT_URL = fixDbUrl(process.env.POSTGRES_URL_NON_POOLING);
-}
+process.env.DATABASE_URL = fixDbUrl(process.env.DATABASE_URL || process.env.POSTGRES_PRISMA_URL);
+process.env.DIRECT_URL = fixDbUrl(process.env.DIRECT_URL || process.env.POSTGRES_URL_NON_POOLING);
 
 const app = express();
 const prisma = new PrismaClient();
