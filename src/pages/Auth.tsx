@@ -51,7 +51,14 @@ const Auth = () => {
                 body: JSON.stringify({ accessCode: loginAccessCode })
             });
 
-            const data = await res.json();
+            const text = await res.text();
+            let data: any = {};
+            try {
+              data = JSON.parse(text);
+            } catch (e) {
+              console.error("Non-JSON API response:", text);
+              throw new Error("Servidor conectando... Por favor, tente novamente em alguns segundos.");
+            }
             
             if (!res.ok) {
                 throw new Error(data.error || "Erro ao fazer login");
