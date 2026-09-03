@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
 import {
     Users as UsersIcon,
     Search,
@@ -47,14 +48,38 @@ export default function Users() {
 
     const fetchUsers = async () => {
         setLoading(true);
-        const token = localStorage.getItem("noxus_token");
         try {
-            const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/admin/users", {
-                headers: { "Authorization": `Bearer ${token}` }
+            const [
+                { data: usersData, error: usersErr },
+                { data: codesData },
+                { data: subsData }
+            ] = await Promise.all([
+                supabase.from('noxus_users').select('*').neq('role', 'SUPERADMIN'),
+                supabase.from('noxus_access_codes').select('*'),
+                supabase.from('noxus_subscriptions').select('*')
+            ]);
+
+            if (usersErr) throw usersErr;
+
+            const mapped = (usersData || []).map((u: any) => {
+                const myCode = (codesData || []).find((c: any) => c.usedById === u.id);
+                const mySub = (subsData || []).find((s: any) => s.userId === u.id);
+
+                return {
+                    id: u.id,
+                    nome: u.name,
+                    email: u.email,
+                    whatsapp: u.whatsapp,
+                    role: u.role,
+                    is_active: u.isActive,
+                    created_at: u.createdAt,
+                    access_code: myCode?.code,
+                    subscription_value: myCode?.subscriptionValue,
+                    expires_at: mySub?.expiresAt
+                };
             });
-            if (!res.ok) throw new Error("Falha ao buscar usuários");
-            const data = await res.json();
-            setUsers(data || []);
+
+            setUsers(mapped);
         } catch (error: any) {
             toast.error("Erro ao carregar usuários: " + error.message);
         } finally {
@@ -64,18 +89,13 @@ export default function Users() {
 
     const toggleUserStatus = async (userId: string, currentStatus: boolean) => {
         setUpdatingId(userId);
-        const token = localStorage.getItem("noxus_token");
         try {
-            const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/admin/users/${userId}/toggle`, {
-                method: "PUT",
-                headers: { 
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
-                },
-                body: JSON.stringify({ is_active: !currentStatus })
-            });
+            const { error } = await supabase
+                .from('noxus_users')
+                .update({ isActive: !currentStatus })
+                .eq('id', userId);
 
-            if (!res.ok) throw new Error("Falha ao atualizar");
+            if (error) throw error;
             
             setUsers(prev => prev.map(u =>
                 u.id === userId ? { ...u, is_active: !currentStatus } : u
@@ -91,18 +111,37 @@ export default function Users() {
 
     const handleRenewUser = async (userId: string) => {
         setUpdatingId(userId);
-        const token = localStorage.getItem("noxus_token");
         try {
-            const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3000"}/api/admin/users/${userId}/renew`, {
-                method: "PUT",
-                headers: { 
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
-                },
-                body: JSON.stringify({ days: 30 })
-            });
+            const { data: sub, error: fetchErr } = await supabase
+                .from('noxus_subscriptions')
+                .select('*')
+                .eq('userId', userId)
+                .single();
+                
+            if (fetchErr && fetchErr.code !== 'PGRST116') throw fetchErr; // PGRST116 = not found
 
-            if (!res.ok) throw new Error("Falha ao renovar");
+            let newDate = new Date();
+            if (sub && sub.expiresAt) {
+                const currentExpires = new Date(sub.expiresAt);
+                if (currentExpires > newDate) {
+                    newDate = currentExpires;
+                }
+            }
+            newDate.setDate(newDate.getDate() + 30);
+            const expiresAtStr = newDate.toISOString();
+
+            if (sub) {
+                const { error: upErr } = await supabase
+                    .from('noxus_subscriptions')
+                    .update({ expiresAt: expiresAtStr })
+                    .eq('id', sub.id);
+                if (upErr) throw upErr;
+            } else {
+                const { error: insErr } = await supabase
+                    .from('noxus_subscriptions')
+                    .insert({ userId, expiresAt: expiresAtStr });
+                if (insErr) throw insErr;
+            }
             
             toast.success("Pagamento confirmado! Acesso liberado por +30 dias.");
             fetchUsers();
