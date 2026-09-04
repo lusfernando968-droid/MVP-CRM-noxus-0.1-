@@ -63,21 +63,10 @@ export default function AdminDashboard() {
         const cac = 15; // Custos fictícios por aluno
         const ltv = ticketMedio * 12; // Média de 12 meses de retenção
         
-        setStats({
-          totalStudents,
-          monthlyGrowth: "+12%",
-          totalRevenue: mrr,
-          churnRate: "2.5%",
-          ticketMedio,
-          ltv,
-          cac,
-          arr
-        });
-        
         // Dynamic chart data generation (last 6 months, cumulative)
         const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
         const currentMonthIndex = new Date().getMonth();
-        const past6Months = [];
+        const past6Months: any[] = [];
         
         for (let i = 5; i >= 0; i--) {
             let m = currentMonthIndex - i;
@@ -97,7 +86,6 @@ export default function AdminDashboard() {
                 studentsByMonth[bucketIndex] += 1;
                 revenueByMonth[bucketIndex] += c.subscriptionValue ? Number(c.subscriptionValue) : 50;
             } else {
-                // If it's older than 6 months, add it to the first bucket so cumulative math holds up
                 studentsByMonth[0] += 1;
                 revenueByMonth[0] += c.subscriptionValue ? Number(c.subscriptionValue) : 50;
             }
@@ -116,6 +104,29 @@ export default function AdminDashboard() {
             return { name: m.name, receita: cumulativeRevenue };
         });
 
+        // Calculate actual growth based on cumulative students
+        const currentMonthTotal = growthDataGenerated[5].alunos;
+        const prevMonthTotal = growthDataGenerated[4].alunos;
+        
+        let calculatedGrowth = "0%";
+        if (prevMonthTotal === 0 && currentMonthTotal > 0) {
+            calculatedGrowth = "+100%";
+        } else if (prevMonthTotal > 0) {
+            const growth = ((currentMonthTotal - prevMonthTotal) / prevMonthTotal) * 100;
+            calculatedGrowth = (growth >= 0 ? "+" : "") + Math.round(growth) + "%";
+        }
+
+        setStats({
+          totalStudents,
+          monthlyGrowth: calculatedGrowth,
+          totalRevenue: mrr,
+          churnRate: "2.5%",
+          ticketMedio,
+          ltv,
+          cac,
+          arr
+        });
+        
         setGrowthData(growthDataGenerated);
         setRevenueData(revenueDataGenerated);
       } catch (error) {
