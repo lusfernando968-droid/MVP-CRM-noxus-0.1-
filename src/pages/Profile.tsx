@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { User, Shield, Phone, Key, Copy, CheckCircle2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 const Profile = () => {
     const [loading, setLoading] = useState(false);
@@ -23,26 +24,51 @@ const Profile = () => {
     const fetchProfile = async () => {
         try {
             setFetching(true);
-            const token = localStorage.getItem("noxus_token");
-            if (!token) return;
+            const userStr = localStorage.getItem("noxus_user");
+            if (!userStr) return;
+            
+            const currentUser = JSON.parse(userStr);
 
-            const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/me", {
-                headers: { "Authorization": `Bearer ${token}` }
-            });
+            // Fetch latest user details from supabase
+            const { data: user, error: userErr } = await supabase
+                .from('noxus_users')
+                .select('*')
+                .eq('id', currentUser.id)
+                .single();
 
-            if (!res.ok) throw new Error("Falha ao carregar perfil");
-
-            const data = await res.json();
-            const user = data.user;
+            if (userErr) throw userErr;
 
             if (user) {
                 setFullName(user.name || "");
                 setWhatsapp(user.whatsapp || "");
-                setAccessCode(user.access_code || "NOXUS-USER");
+
+                // Fetch access code
+                const { data: codeData } = await supabase
+                    .from('noxus_access_codes')
+                    .select('code')
+                    .eq('usedById', currentUser.id)
+                    .single();
                 
-                if (user.expires_at) {
-                    const exp = new Date(user.expires_at);
+                if (codeData) {
+                    setAccessCode(codeData.code);
+                } else if (currentUser.role === 'MASTER' || currentUser.role === 'SUPERADMIN') {
+                    setAccessCode('SUA CHAVE MESTRA');
+                } else {
+                    setAccessCode('Não encontrada');
+                }
+                
+                // Fetch subscription
+                const { data: subData } = await supabase
+                    .from('noxus_subscriptions')
+                    .select('expiresAt')
+                    .eq('userId', currentUser.id)
+                    .single();
+
+                if (subData && subData.expiresAt) {
+                    const exp = new Date(subData.expiresAt);
                     setExpiresAt(exp.toLocaleDateString('pt-BR'));
+                } else if (currentUser.role === 'MASTER') {
+                    setExpiresAt("Vitalício");
                 }
 
                 if (user.createdAt) {
@@ -62,27 +88,27 @@ const Profile = () => {
     const handleUpdateProfile = async () => {
         try {
             setLoading(true);
-            const token = localStorage.getItem("noxus_token");
-            if (!token) {
+            const userStr = localStorage.getItem("noxus_user");
+            if (!userStr) {
                 toast.error("Você precisa estar logado.");
                 return;
             }
+            const currentUser = JSON.parse(userStr);
 
-            const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/me", {
-                method: "PUT",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    name: fullName,
-                    whatsapp: whatsapp
-                })
-            });
+            const { error } = await supabase
+                .from('noxus_users')
+                .update({ name: fullName, whatsapp: whatsapp })
+                .eq('id', currentUser.id);
 
-            if (!res.ok) throw new Error("Erro ao atualizar perfil");
+            if (error) throw error;
 
             toast.success("Perfil atualizado com sucesso!");
+            
+            // Update local storage user
+            currentUser.name = fullName;
+            currentUser.whatsapp = whatsapp;
+            localStorage.setItem("noxus_user", JSON.stringify(currentUser));
+            
             fetchProfile();
         } catch (error: any) {
             toast.error("Erro ao atualizar perfil: " + error.message);
@@ -201,7 +227,7 @@ const Profile = () => {
 
                             <div className="flex flex-col sm:flex-row items-center gap-3 bg-accent/30 p-4 rounded-xl border border-border/50">
                                 <div className="flex-1 min-w-0">
-                                    <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider block">Sua Chave Mestra</span>
+                                    <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider block">Sua Chave de Acesso</span>
                                     <span className="font-mono text-xl font-bold tracking-wider text-foreground select-all">
                                         {accessCode}
                                     </span>
