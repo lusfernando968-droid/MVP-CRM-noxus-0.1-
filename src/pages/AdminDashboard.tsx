@@ -44,18 +44,17 @@ export default function AdminDashboard() {
           supabase.from('noxus_subscriptions').select('*')
         ]);
 
-        const totalStudents = users?.length || 0;
+        const validCodes = codes?.filter(c => c.code !== 'NOXUS-MASTER' && c.clientName !== 'Admin') || [];
+        const totalStudents = validCodes.length;
         
         let mrr = 0;
-        if (codes && codes.length > 0) {
-            codes.forEach(c => {
-                if (c.subscriptionValue) {
-                    mrr += Number(c.subscriptionValue);
-                } else {
-                    mrr += 50; // default value
-                }
-            });
-        }
+        validCodes.forEach(c => {
+            if (c.subscriptionValue) {
+                mrr += Number(c.subscriptionValue);
+            } else {
+                mrr += 50; // default value
+            }
+        });
         
         const arr = mrr * 12;
         const ticketMedio = totalStudents > 0 ? Math.round(mrr / totalStudents) : 50;
