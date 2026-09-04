@@ -10,10 +10,15 @@
   "lang": "pt-BR",
   "icons": [
     {
-      "src": "/noxus-x.svg",
-      "sizes": "192x192 512x512 any",
-      "type": "image/svg+xml",
+      "src": "/noxus-icon.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
       "purpose": "any maskable"
+    },
+    {
+      "src": "/noxus-x.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
     }
   ],
   "screenshots": [],
