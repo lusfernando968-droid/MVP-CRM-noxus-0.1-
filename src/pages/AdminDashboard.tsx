@@ -169,7 +169,7 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div>
-              <p className="text-xl md:text-3xl font-bold">R$ {(stats.arr/1000).toFixed(1)}k</p>
+              <p className="text-xl md:text-3xl font-bold">R$ {stats.arr.toLocaleString('pt-BR')}</p>
               <p className="text-[10px] md:text-xs text-muted-foreground mt-1">Receita Anual Recorrente</p>
             </div>
           </CardContent>
@@ -254,7 +254,7 @@ export default function AdminDashboard() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                   <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
                   <RechartsTooltip
                     contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
                     labelStyle={{ color: 'hsl(var(--foreground))' }}
@@ -281,7 +281,8 @@ export default function AdminDashboard() {
                     fontSize={12} 
                     tickLine={false} 
                     axisLine={false} 
-                    tickFormatter={(value) => `R$${value/1000}k`}
+                    allowDecimals={false}
+                    tickFormatter={(value) => `R$ ${value}`}
                   />
                   <RechartsTooltip
                     formatter={(value: number) => [`R$ ${value.toLocaleString('pt-BR')}`, 'Receita']}
