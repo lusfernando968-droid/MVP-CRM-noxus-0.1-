@@ -31,7 +31,7 @@ const Auth = () => {
                         }
                     } catch (e) {}
                 }
-                navigate('/');
+                navigate('/dashboard');
             }
         };
         checkExistingSession();
