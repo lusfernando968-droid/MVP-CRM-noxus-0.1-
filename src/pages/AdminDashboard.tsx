@@ -32,36 +32,66 @@ export default function AdminDashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const token = localStorage.getItem("noxus_token");
-        if (!token) return;
+        setLoading(true);
 
-        const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:3000") + "/api/admin/stats", {
-          headers: { "Authorization": `Bearer ${token}` }
+        const [
+          { data: users },
+          { data: codes },
+          { data: subs }
+        ] = await Promise.all([
+          supabase.from('noxus_users').select('*').neq('role', 'SUPERADMIN').neq('role', 'MASTER'),
+          supabase.from('noxus_access_codes').select('*'),
+          supabase.from('noxus_subscriptions').select('*')
+        ]);
+
+        const totalStudents = users?.length || 0;
+        
+        let mrr = 0;
+        if (codes && codes.length > 0) {
+            codes.forEach(c => {
+                if (c.subscriptionValue) {
+                    mrr += Number(c.subscriptionValue);
+                } else {
+                    mrr += 50; // default value
+                }
+            });
+        }
+        
+        const arr = mrr * 12;
+        const ticketMedio = totalStudents > 0 ? Math.round(mrr / totalStudents) : 50;
+        
+        // Simulating some SaaS metrics
+        const cac = 15; // Custos fictícios por aluno
+        const ltv = ticketMedio * 12; // Média de 12 meses de retenção
+        
+        setStats({
+          totalStudents,
+          monthlyGrowth: "+12%",
+          totalRevenue: mrr,
+          churnRate: "2.5%",
+          ticketMedio,
+          ltv,
+          cac,
+          arr
         });
         
-        if (res.ok) {
-          const data = await res.json();
-          setStats(data);
-          
-          // Generate placeholder data for charts based on real totals for now
-          // (can be updated to use actual time-series data later)
-          setGrowthData([
-            { name: 'Jan', alunos: Math.floor(data.totalStudents * 0.2) },
-            { name: 'Fev', alunos: Math.floor(data.totalStudents * 0.4) },
-            { name: 'Mar', alunos: Math.floor(data.totalStudents * 0.6) },
-            { name: 'Abr', alunos: Math.floor(data.totalStudents * 0.8) },
-            { name: 'Mai', alunos: Math.floor(data.totalStudents * 0.9) },
-            { name: 'Jun', alunos: data.totalStudents },
-          ]);
-          setRevenueData([
-            { name: 'Jan', receita: Math.floor(data.totalRevenue * 0.2) },
-            { name: 'Fev', receita: Math.floor(data.totalRevenue * 0.4) },
-            { name: 'Mar', receita: Math.floor(data.totalRevenue * 0.6) },
-            { name: 'Abr', receita: Math.floor(data.totalRevenue * 0.8) },
-            { name: 'Mai', receita: Math.floor(data.totalRevenue * 0.9) },
-            { name: 'Jun', receita: data.totalRevenue },
-          ]);
-        }
+        // Generate placeholder data for charts based on real totals for now
+        setGrowthData([
+          { name: 'Jan', alunos: Math.floor(totalStudents * 0.2) },
+          { name: 'Fev', alunos: Math.floor(totalStudents * 0.4) },
+          { name: 'Mar', alunos: Math.floor(totalStudents * 0.6) },
+          { name: 'Abr', alunos: Math.floor(totalStudents * 0.8) },
+          { name: 'Mai', alunos: Math.floor(totalStudents * 0.9) },
+          { name: 'Jun', alunos: totalStudents },
+        ]);
+        setRevenueData([
+          { name: 'Jan', receita: Math.floor(mrr * 0.2) },
+          { name: 'Fev', receita: Math.floor(mrr * 0.4) },
+          { name: 'Mar', receita: Math.floor(mrr * 0.6) },
+          { name: 'Abr', receita: Math.floor(mrr * 0.8) },
+          { name: 'Mai', receita: Math.floor(mrr * 0.9) },
+          { name: 'Jun', receita: mrr },
+        ]);
       } catch (error) {
         console.error("Error fetching stats:", error);
       } finally {
