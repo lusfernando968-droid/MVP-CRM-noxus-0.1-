@@ -116,11 +116,19 @@ export default function AdminDashboard() {
             calculatedGrowth = (growth >= 0 ? "+" : "") + Math.round(growth) + "%";
         }
 
+        // Calculate churn rate
+        const validUsers = users || [];
+        const inactiveUsersCount = validUsers.filter(u => u.isActive === false).length;
+        const totalUsersForChurn = validUsers.length;
+        const calculatedChurn = totalUsersForChurn > 0 
+            ? ((inactiveUsersCount / totalUsersForChurn) * 100).toFixed(1) + "%" 
+            : "0%";
+
         setStats({
           totalStudents,
           monthlyGrowth: calculatedGrowth,
           totalRevenue: mrr,
-          churnRate: "2.5%",
+          churnRate: calculatedChurn,
           ticketMedio,
           ltv,
           cac,

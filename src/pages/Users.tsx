@@ -394,12 +394,26 @@ export default function Users() {
                                                     <div className="flex items-center gap-2">
                                                         {updatingId === user.id ? (
                                                             <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                                        ) : user.is_active ? (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="destructive"
+                                                                onClick={() => toggleUserStatus(user.id, true)}
+                                                                className="font-bold text-[11px] h-7 px-2.5 shadow-xs"
+                                                            >
+                                                                <XCircle className="h-3 w-3 mr-1" />
+                                                                Cancelar
+                                                            </Button>
                                                         ) : (
-                                                            <Switch
-                                                                checked={user.is_active}
-                                                                onCheckedChange={() => toggleUserStatus(user.id, !!user.is_active)}
-                                                                className="data-[state=checked]:bg-emerald-500 scale-75 origin-right"
-                                                            />
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={() => toggleUserStatus(user.id, false)}
+                                                                className="text-emerald-600 hover:text-emerald-700 font-bold text-[11px] h-7 px-2.5 shadow-xs"
+                                                            >
+                                                                <CheckCircle2 className="h-3 w-3 mr-1" />
+                                                                Reativar
+                                                            </Button>
                                                         )}
                                                     </div>
                                                 </div>
@@ -507,16 +521,27 @@ export default function Users() {
                                                                         <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
                                                                         Confirmar (+30d)
                                                                     </Button>
-                                                                    <div className="flex items-center gap-1.5 ml-1 border-l border-border/40 pl-3">
-                                                                        <span className="text-xs font-medium text-muted-foreground">
-                                                                            {user.is_active ? "Ativo" : "Inativo"}
-                                                                        </span>
-                                                                        <Switch
-                                                                            checked={user.is_active}
-                                                                            onCheckedChange={() => toggleUserStatus(user.id, !!user.is_active)}
-                                                                            className="data-[state=checked]:bg-emerald-500"
-                                                                        />
-                                                                    </div>
+                                                                    {user.is_active ? (
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="destructive"
+                                                                            onClick={() => toggleUserStatus(user.id, true)}
+                                                                            className="font-bold text-xs h-8 shadow-xs ml-1"
+                                                                        >
+                                                                            <XCircle className="h-3.5 w-3.5 mr-1" />
+                                                                            Cancelar
+                                                                        </Button>
+                                                                    ) : (
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="outline"
+                                                                            onClick={() => toggleUserStatus(user.id, false)}
+                                                                            className="text-emerald-600 hover:text-emerald-700 font-bold text-xs h-8 shadow-xs ml-1"
+                                                                        >
+                                                                            <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                                                                            Reativar
+                                                                        </Button>
+                                                                    )}
                                                                 </>
                                                             )}
                                                         </div>
