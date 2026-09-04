@@ -11,12 +11,15 @@ import {
     Calendar as CalendarIcon,
     Key,
     Phone,
-    DollarSign
+    DollarSign,
+    UserPlus
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -41,6 +44,12 @@ export default function Users() {
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [updatingId, setUpdatingId] = useState<string | null>(null);
+    
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [newUserName, setNewUserName] = useState("");
+    const [newUserEmail, setNewUserEmail] = useState("");
+    const [newUserPhone, setNewUserPhone] = useState("");
+    const [isAddingUser, setIsAddingUser] = useState(false);
 
     useEffect(() => {
         fetchUsers();
@@ -152,6 +161,64 @@ export default function Users() {
         }
     };
 
+    const handleAddUser = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newUserName || !newUserEmail) {
+            toast.error("Preencha o nome e o e-mail.");
+            return;
+        }
+
+        setIsAddingUser(true);
+        try {
+            // Generate a random code: NOXUS-XXXX
+            const randomString = Math.random().toString(36).substring(2, 6).toUpperCase();
+            const generatedCode = `NOXUS-${randomString}`;
+
+            // Create user in noxus_users (simulate a new auth UUID for the system)
+            const simulatedUserId = crypto.randomUUID();
+
+            const { error: insErr } = await supabase.from('noxus_users').insert({
+                id: simulatedUserId,
+                name: newUserName,
+                email: newUserEmail,
+                whatsapp: newUserPhone,
+                role: 'USER',
+                isActive: true
+            });
+
+            if (insErr) throw insErr;
+
+            const { error: codeErr } = await supabase.from('noxus_access_codes').insert({
+                code: generatedCode,
+                usedById: simulatedUserId,
+                isUsed: true,
+                subscriptionValue: 50.00
+            });
+
+            if (codeErr) throw codeErr;
+
+            // Generate initial subscription of 30 days
+            let newDate = new Date();
+            newDate.setDate(newDate.getDate() + 30);
+            
+            await supabase.from('noxus_subscriptions').insert({ 
+                userId: simulatedUserId, 
+                expiresAt: newDate.toISOString() 
+            });
+
+            toast.success(`Tatuador adicionado! Chave gerada: ${generatedCode}`);
+            setIsAddModalOpen(false);
+            setNewUserName("");
+            setNewUserEmail("");
+            setNewUserPhone("");
+            fetchUsers();
+        } catch (error: any) {
+            toast.error("Erro ao adicionar usuário: " + error.message);
+        } finally {
+            setIsAddingUser(false);
+        }
+    };
+
     const filteredUsers = users.filter(u =>
         u.nome?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         u.email?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -159,6 +226,58 @@ export default function Users() {
 
     return (
         <>
+            <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+                <DialogContent className="sm:max-w-[425px] bg-card border-border/50">
+                    <DialogHeader>
+                        <DialogTitle>Adicionar Tatuador</DialogTitle>
+                        <DialogDescription>
+                            Cadastre um novo tatuador e gere uma chave de acesso para ele.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleAddUser}>
+                        <div className="grid gap-4 py-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="name">Nome Completo / Estúdio</Label>
+                                <Input
+                                    id="name"
+                                    value={newUserName}
+                                    onChange={(e) => setNewUserName(e.target.value)}
+                                    placeholder="Ex: João Silva"
+                                    className="rounded-xl"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="email">E-mail</Label>
+                                <Input
+                                    id="email"
+                                    type="email"
+                                    value={newUserEmail}
+                                    onChange={(e) => setNewUserEmail(e.target.value)}
+                                    placeholder="joao@estudio.com"
+                                    className="rounded-xl"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="whatsapp">WhatsApp (Opcional)</Label>
+                                <Input
+                                    id="whatsapp"
+                                    value={newUserPhone}
+                                    onChange={(e) => setNewUserPhone(e.target.value)}
+                                    placeholder="(11) 99999-9999"
+                                    className="rounded-xl"
+                                />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button type="submit" disabled={isAddingUser} className="w-full rounded-xl">
+                                {isAddingUser ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <UserPlus className="h-4 w-4 mr-2" />}
+                                Criar Acesso
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
             <div className="p-4 md:p-8 max-w-7xl mx-auto animate-fade-in pb-24">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 md:mb-8">
                     <div>
@@ -171,14 +290,23 @@ export default function Users() {
                         </p>
                     </div>
 
-                    <div className="relative w-full md:w-80">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            placeholder="Buscar por nome ou e-mail..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-9 bg-card border-border/50 rounded-xl w-full"
-                        />
+                    <div className="flex w-full md:w-auto items-center gap-3">
+                        <div className="relative flex-1 md:w-80">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Buscar por nome..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="pl-9 bg-card border-border/50 rounded-xl w-full"
+                            />
+                        </div>
+                        <Button 
+                          onClick={() => setIsAddModalOpen(true)}
+                          className="rounded-xl flex items-center gap-2"
+                        >
+                            <UserPlus className="h-4 w-4" />
+                            <span className="hidden md:inline">Novo Tatuador</span>
+                        </Button>
                     </div>
                 </div>
 
