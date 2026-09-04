@@ -74,23 +74,50 @@ export default function AdminDashboard() {
           arr
         });
         
-        // Generate placeholder data for charts based on real totals for now
-        setGrowthData([
-          { name: 'Jan', alunos: Math.floor(totalStudents * 0.2) },
-          { name: 'Fev', alunos: Math.floor(totalStudents * 0.4) },
-          { name: 'Mar', alunos: Math.floor(totalStudents * 0.6) },
-          { name: 'Abr', alunos: Math.floor(totalStudents * 0.8) },
-          { name: 'Mai', alunos: Math.floor(totalStudents * 0.9) },
-          { name: 'Jun', alunos: totalStudents },
-        ]);
-        setRevenueData([
-          { name: 'Jan', receita: Math.floor(mrr * 0.2) },
-          { name: 'Fev', receita: Math.floor(mrr * 0.4) },
-          { name: 'Mar', receita: Math.floor(mrr * 0.6) },
-          { name: 'Abr', receita: Math.floor(mrr * 0.8) },
-          { name: 'Mai', receita: Math.floor(mrr * 0.9) },
-          { name: 'Jun', receita: mrr },
-        ]);
+        // Dynamic chart data generation (last 6 months, cumulative)
+        const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+        const currentMonthIndex = new Date().getMonth();
+        const past6Months = [];
+        
+        for (let i = 5; i >= 0; i--) {
+            let m = currentMonthIndex - i;
+            if (m < 0) m += 12;
+            past6Months.push({ index: m, name: monthNames[m] });
+        }
+
+        const studentsByMonth = new Array(6).fill(0);
+        const revenueByMonth = new Array(6).fill(0);
+        
+        validCodes.forEach(c => {
+            const date = new Date(c.created_at || c.createdAt || new Date());
+            const m = date.getMonth();
+            
+            const bucketIndex = past6Months.findIndex(pm => pm.index === m);
+            if (bucketIndex !== -1) {
+                studentsByMonth[bucketIndex] += 1;
+                revenueByMonth[bucketIndex] += c.subscriptionValue ? Number(c.subscriptionValue) : 50;
+            } else {
+                // If it's older than 6 months, add it to the first bucket so cumulative math holds up
+                studentsByMonth[0] += 1;
+                revenueByMonth[0] += c.subscriptionValue ? Number(c.subscriptionValue) : 50;
+            }
+        });
+
+        let cumulativeStudents = 0;
+        let cumulativeRevenue = 0;
+        
+        const growthDataGenerated = past6Months.map((m, i) => {
+            cumulativeStudents += studentsByMonth[i];
+            return { name: m.name, alunos: cumulativeStudents };
+        });
+        
+        const revenueDataGenerated = past6Months.map((m, i) => {
+            cumulativeRevenue += revenueByMonth[i];
+            return { name: m.name, receita: cumulativeRevenue };
+        });
+
+        setGrowthData(growthDataGenerated);
+        setRevenueData(revenueDataGenerated);
       } catch (error) {
         console.error("Error fetching stats:", error);
       } finally {
