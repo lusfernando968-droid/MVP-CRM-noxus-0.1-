@@ -10,15 +10,9 @@
   "lang": "pt-BR",
   "icons": [
     {
-      "src": "/logo-app-noxus.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/logo-app-noxus.png",
-      "sizes": "512x512",
-      "type": "image/png",
+      "src": "/noxus-x.svg",
+      "sizes": "192x192 512x512 any",
+      "type": "image/svg+xml",
       "purpose": "any maskable"
     }
   ],
