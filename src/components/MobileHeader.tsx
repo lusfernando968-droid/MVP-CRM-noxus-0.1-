@@ -149,30 +149,16 @@ export function MobileHeader() {
     setSending(false);
   };
 
-  const openSheet = (v: SheetView) => {
+  const openSheet = () => {
     setIsOpen(true);
-    setView(v);
-    if (v === "chat") {
-      setUnreadCount(0);
-      fetchMessages();
-    }
+    setUnreadCount(0);
+    fetchMessages();
   };
-
-  const handleLogout = async () => {
-    localStorage.clear();
-    sessionStorage.clear();
-    navigate("/auth", { replace: true });
-    try { await supabase.auth.signOut(); } catch (_) { }
-    toast.success("Sessão encerrada");
-  };
-
-  const initials = user?.name?.charAt(0)?.toUpperCase() || "U";
 
   return (
     <>
       {/* Header fixo no topo — apenas mobile */}
-      <header className="fixed top-0 left-0 right-0 z-50 lg:hidden h-14 bg-sidebar border-b border-sidebar-border flex items-center justify-between px-4">
-        {/* Logo / título */}
+      <header className="fixed top-0 left-0 right-0 z-50 lg:hidden h-14 bg-sidebar border-b border-sidebar-border flex items-center justify-between px-4 pt-safe-top">
         <div className="flex items-center gap-2">
           <img
             src="/logo-app-noxus.png"
@@ -181,12 +167,11 @@ export function MobileHeader() {
           />
         </div>
 
-        {/* Botão perfil + badge de suporte */}
         <button
-          onClick={() => openSheet("menu")}
-          className="relative flex items-center justify-center h-9 w-9 rounded-full bg-sidebar-primary/20 text-sidebar-foreground hover:bg-sidebar-primary/40 transition-colors font-semibold text-sm"
+          onClick={openSheet}
+          className="relative flex items-center justify-center h-9 w-9 rounded-full bg-sidebar-primary/20 text-sidebar-foreground hover:bg-sidebar-primary/40 transition-colors"
         >
-          {initials}
+          <MessageCircle className="h-5 w-5" />
           {unreadCount > 0 && (
             <span className="absolute -top-0.5 -right-0.5 h-4 w-4 bg-red-500 rounded-full flex items-center justify-center text-[9px] font-bold text-white border border-sidebar">
               {unreadCount > 9 ? "9+" : unreadCount}
@@ -195,7 +180,6 @@ export function MobileHeader() {
         </button>
       </header>
 
-      {/* Overlay */}
       {isOpen && (
         <div
           className="fixed inset-0 z-[60] bg-black/50 lg:hidden"
@@ -203,33 +187,17 @@ export function MobileHeader() {
         />
       )}
 
-      {/* Sheet deslizante de cima */}
       <div
         className={cn(
           "fixed top-0 right-0 z-[70] h-full w-[85vw] max-w-sm bg-card flex flex-col shadow-2xl transition-transform duration-300 ease-in-out lg:hidden",
           isOpen ? "translate-x-0" : "translate-x-full"
         )}
       >
-        {/* Header do sheet */}
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border/50">
-          {view === "chat" ? (
-            <button
-              onClick={() => setView("menu")}
-              className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              ← Voltar
-            </button>
-          ) : (
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-base">
-                {initials}
-              </div>
-              <div className="min-w-0">
-                <p className="font-semibold text-foreground text-sm truncate">{user?.name || "Usuário"}</p>
-                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-              </div>
-            </div>
-          )}
+            <h3 className="font-semibold flex items-center gap-2">
+              <MessageCircle className="h-5 w-5 text-primary" />
+              Central de Suporte
+            </h3>
           <button
             onClick={() => setIsOpen(false)}
             className="h-8 w-8 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
@@ -238,44 +206,35 @@ export function MobileHeader() {
           </button>
         </div>
 
-        {/* Conteúdo — Menu */}
-        {view === "menu" && (
-          <nav className="flex-1 p-4 space-y-2">
-            <button
-              onClick={() => { setIsOpen(false); navigate("/perfil"); }}
-              className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl hover:bg-muted/60 transition-colors text-left group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <User className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Meu Perfil</p>
-                  <p className="text-xs text-muted-foreground">Edite seus dados</p>
-                </div>
+        {/* Conteúdo — Chat */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-muted/30" ref={scrollRef}>
+            {loading ? (
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
               </div>
-              <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
-            </button>
-
-            <button
-              onClick={() => openSheet("chat")}
-              className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl hover:bg-muted/60 transition-colors text-left group relative"
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <MessageCircle className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Suporte Noxus</p>
-                  <p className="text-xs text-muted-foreground">Fale com nossa equipe</p>
-                </div>
+            ) : messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground space-y-3 opacity-50">
+                <MessageCircle className="h-10 w-10" />
+                <p className="text-sm text-center">Nenhuma mensagem ainda.<br />Como podemos ajudar?</p>
               </div>
-              <div className="flex items-center gap-2">
-                {unreadCount > 0 && (
-                  <span className="h-5 min-w-[20px] px-1 bg-red-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white">
-                    {unreadCount}
+            ) : (
+              messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={cn(
+                    "flex flex-col max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm text-sm",
+                    msg.is_from_support
+                      ? "bg-card border border-border/50 self-start text-foreground rounded-tl-sm"
+                      : "bg-primary text-primary-foreground self-end rounded-tr-sm"
+                  )}
+                >
+                  <p className="leading-relaxed">{msg.message}</p>
+                  <span className={cn(
+                    "text-[10px] mt-1 text-right opacity-70",
+                    msg.is_from_support ? "text-muted-foreground" : "text-primary-foreground"
+                  )}>
+                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
-                )}
                 <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
               </div>
             </button>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { LayoutDashboard, Calendar, Users, DollarSign, Shield, MessageSquare } from "lucide-react";
+import { LayoutDashboard, Calendar, Users, DollarSign, Shield, MessageSquare, User as UserIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function BottomNav() {
@@ -32,13 +32,13 @@ export function BottomNav() {
       { title: "Painel Adm", path: "/admin-dashboard", icon: LayoutDashboard },
       { title: "Clientes", path: "/admin-noxus", icon: Shield },
       { title: "Usuários", path: "/usuarios", icon: Users },
-      { title: "Suporte", path: "/suporte-admin", icon: MessageSquare },
+      { title: "Perfil", path: "/perfil", icon: UserIcon },
     ];
   } else if (role === 'ADMIN') {
     navItems = [
       { title: "Usuários", path: "/usuarios", icon: Users },
       { title: "Suporte", path: "/suporte-admin", icon: MessageSquare },
-      { title: "Vendas", path: "/dev-dashboard", icon: DollarSign },
+      { title: "Perfil", path: "/perfil", icon: UserIcon },
     ];
   } else {
     navItems = [
@@ -46,6 +46,7 @@ export function BottomNav() {
       { title: "Agenda", path: "/agenda", icon: Calendar },
       { title: "Clientes", path: "/clientes", icon: Users },
       { title: "Financeiro", path: "/financeiro", icon: DollarSign },
+      { title: "Perfil", path: "/perfil", icon: UserIcon },
     ];
   }
 

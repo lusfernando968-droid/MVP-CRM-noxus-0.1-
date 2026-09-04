@@ -108,11 +108,22 @@ const Profile = () => {
 
     return (
         <div className="space-y-6 max-w-5xl mx-auto pb-16">
-            <div className="page-header">
+            <div className="page-header flex justify-between items-center">
                 <div>
                     <h1 className="page-title">Perfil</h1>
                     <p className="page-subtitle">Gerencie suas informações de conta e estúdio</p>
                 </div>
+                <Button
+                  variant="outline"
+                  className="text-destructive border-destructive hover:bg-destructive/10"
+                  onClick={() => {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    window.location.href = "/auth";
+                  }}
+                >
+                  Sair da Conta
+                </Button>
             </div>
 
             <div className="grid gap-6 md:grid-cols-3">
