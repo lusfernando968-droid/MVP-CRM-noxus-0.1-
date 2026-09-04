@@ -192,7 +192,12 @@ export default function Users() {
                 code: generatedCode,
                 usedById: simulatedUserId,
                 isUsed: true,
-                subscriptionValue: 50.00
+                subscriptionValue: 50.00,
+                clientName: newUserName,
+                clientEmail: newUserEmail,
+                clientPhone: newUserPhone,
+                status: 'available',
+                paymentMethod: 'Manual'
             });
 
             if (codeErr) throw codeErr;

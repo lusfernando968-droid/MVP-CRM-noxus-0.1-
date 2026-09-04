@@ -93,12 +93,43 @@ export default function SuperAdmin() {
         return;
       }
 
+      // Create a simulated user first so they appear in Gestão de Usuários immediately
+      const simulatedUserId = crypto.randomUUID();
+      
+      const { error: userErr } = await supabase.from('noxus_users').insert({
+        id: simulatedUserId,
+        name: newStudentName,
+        email: newStudentEmail,
+        whatsapp: newStudentPhone,
+        role: 'USER',
+        isActive: true
+      });
+
+      if (userErr) {
+        console.error("Erro ao criar usuário", userErr);
+      }
+
+      const clientDataWithUserId = {
+        ...newClientData,
+        usedById: simulatedUserId,
+        isUsed: true
+      };
+
       const { error } = await supabase
         .from('noxus_access_codes')
-        .insert([newClientData]);
+        .insert([clientDataWithUserId]);
 
       if (error) throw error;
       
+      // Generate initial subscription of 30 days
+      let newDate = new Date();
+      newDate.setDate(newDate.getDate() + 30);
+      
+      await supabase.from('noxus_subscriptions').insert({ 
+          userId: simulatedUserId, 
+          expiresAt: newDate.toISOString() 
+      });
+
       toast.success(`Código ${randomCode} gerado com sucesso!`);
       clearForm();
       fetchCodes();
